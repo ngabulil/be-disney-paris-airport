@@ -1,6 +1,6 @@
 const client = require("../config/contentful")
 
-const getExcursionTrips = async ({ page = 1, limit = 10 }) => {
+const getExcursionTrips = async ({ page = 1, limit = 9 }) => {
   const skip = (page - 1) * limit
 
   const query = {

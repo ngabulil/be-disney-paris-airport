@@ -10,7 +10,7 @@ const { formatResponse } = require("../format/response") // sesuaikan path
 const getArticles = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1
-    const limit = parseInt(req.query.limit) || 10
+    const limit = parseInt(req.query.limit) || 6
     const category = req.query.category || null
 
     const { total, items } = await articleService.getArticles({
@@ -54,13 +54,22 @@ const getArticleDetail = async (req, res) => {
       return formatResponse(res, 404, "Article not found", null, "Not Found")
     }
 
+    const related = await articleService.getRelatedArticles(slug)
+
     const formatted = formatter.formatArticleDetail(article)
+
+    const formattedRelated = related.map((item) =>
+      formatter.formatArticleList(item) // atau pakai formatter lain
+    )
 
     return formatResponse(
       res,
       200,
       "Article detail fetched successfully",
-      formatted
+      {
+        ...formatted,
+        relatedArticles: formattedRelated,
+      }
     )
   } catch (error) {
     return formatResponse(

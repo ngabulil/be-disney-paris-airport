@@ -164,6 +164,14 @@ const formatArticleDetail = (article) => ({
   characterImage: getImageUrl(article.fields.characterImage),
   createdAt: article.sys.createdAt,
   sections: formatSections(article.fields.sections),
+
+  // ✅ tambahin ini
+  footer: {
+    title: article.fields.footerTitle || null,
+    description: article.fields.footerDescription || null,
+    ctaTitle: article.fields.footerCtaTitle || null,
+    ctaDescription: article.fields.footerCtaDescription || null,
+  },
 })
 
 module.exports = {

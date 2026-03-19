@@ -10,7 +10,7 @@ const { formatResponse } = require("../format/response")
 const getExcursionTrips = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1
-    const limit = parseInt(req.query.limit) || 10
+    const limit = parseInt(req.query.limit) || 9
 
     const { total, items } = await excursionTripService.getExcursionTrips({
       page,

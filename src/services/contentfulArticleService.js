@@ -1,7 +1,7 @@
 // services/article.service.js
 const client = require("../config/contentful")
 
-const getArticles = async ({ page = 1, limit = 10, category }) => {
+const getArticles = async ({ page = 1, limit = 6, category }) => {
   const skip = (page - 1) * limit
 
   const query = {
@@ -46,8 +46,28 @@ const getPopularArticles = async () => {
   return response.items[0].fields.popularArticle || []
 }
 
+const getRelatedArticles = async (excludeSlug) => {
+  const response = await client.getEntries({
+    content_type: "article",
+    include: 2,
+    limit: 10, // ambil beberapa dulu biar bisa random
+  })
+
+  // filter yang slug-nya beda
+  const filtered = response.items.filter(
+    (item) => item.fields.slug !== excludeSlug
+  )
+
+  // shuffle (random)
+  const shuffled = filtered.sort(() => 0.5 - Math.random())
+
+  // ambil 2
+  return shuffled.slice(0, 2)
+}
+
 module.exports = {
   getArticles,
   getArticleBySlug,
   getPopularArticles,
+  getRelatedArticles,
 }
