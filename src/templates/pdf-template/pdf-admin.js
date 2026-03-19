@@ -1,5 +1,3 @@
-// utils/bookingAdminPdf.template.js
-
 const generateAdminBookingPdf = (data) => {
   return `
 <!DOCTYPE html>

@@ -1,4 +1,4 @@
-const articleService = require("../services/contentfulService")
+const articleService = require("../services/contentfulArticleService")
 const formatter = require("../format/article.contentful.format")
 const { formatResponse } = require("../format/response") // sesuaikan path
 

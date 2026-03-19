@@ -8,7 +8,9 @@ const {
   getBookingById,
   updateBooking,
   deleteBooking,
-  checkBookingPrice
+  checkBookingPrice,
+  downloadAdminBookingPdf,
+  downloadCustomerBookingPdf
 } = require("../controllers/bookingControllers");
 
 // Admin protected (recommended)
@@ -18,5 +20,7 @@ router.get("/:id", authMiddleware, getBookingById);
 router.put("/:id", authMiddleware, updateBooking);
 router.delete("/:id", authMiddleware, deleteBooking);
 router.post("/check-price", checkBookingPrice);
+router.get("/download/admin-pdf/:id", authMiddleware, downloadAdminBookingPdf);
+router.get("/download/customer-pdf/:id", authMiddleware, downloadCustomerBookingPdf);
 
 module.exports = router;

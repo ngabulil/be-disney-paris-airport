@@ -87,14 +87,25 @@ const createPromo = async (req, res) => {
 const getAllPromos = async (req, res) => {
     try {
         const promos = await Promo.find({ isDeleted: false })
-            .populate("allowedTripId");
+            .populate({
+                path: "allowedTripId",
+                populate: [
+                    {
+                        path: "pickupLocation",
+                        select: "name"
+                    },
+                    {
+                        path: "dropoffLocation",
+                        select: "name"
+                    }
+                ]
+            });
 
         return formatResponse(res, 200, "Promos retrieved successfully", promos);
     } catch (error) {
         return formatResponse(res, 500, "Internal server error", null, error.message);
     }
 };
-
 // GET PROMO BY ID
 const getPromoById = async (req, res) => {
     try {

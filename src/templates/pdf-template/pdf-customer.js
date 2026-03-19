@@ -1,5 +1,3 @@
-// utils/bookingCustomerPdf.template.js
-
 const generateCustomerBookingPdf = (data) => {
   return `
 <!DOCTYPE html>

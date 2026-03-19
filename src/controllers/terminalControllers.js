@@ -47,7 +47,16 @@ const createTerminal = async (req, res) => {
 // GET ALL TERMINALS
 const getAllTerminals = async (req, res) => {
     try {
-        const terminals = await Terminal.find({ isDeleted: false })
+        const { locationId } = req.query;
+
+        const filter = { isDeleted: false };
+
+        // jika ada query locationId
+        if (locationId) {
+            filter.location = locationId;
+        }
+
+        const terminals = await Terminal.find(filter)
             .populate("location", "name locationType");
 
         return formatResponse(

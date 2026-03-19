@@ -1,11 +1,16 @@
 const mongoose = require("mongoose");
 const { formatResponse } = require("../format/response");
-
 const Booking = require("../models/booking.model");
 const Location = require("../models/location.model");
 const Hotel = require("../models/hotel.model");
 const Terminal = require("../models/terminal.model");
 const Vehicle = require("../models/vehicle.model");
+const { formatBookingEmailData } = require("../format/bookingFormat");
+const { generateAdminBookingPdf } = require("../templates/pdf-template/pdf-admin");
+const { generatePdfBuffer } = require("../utils/pdfGenerator");
+const { generateCustomerBookingPdf } = require("../templates/pdf-template/pdf-customer");
+
+const ADMIN_EMAILS = process.env.ADMIN_EMAILS.split(",");
 
 const toNumber = (val, def = 0) => {
     if (val === undefined || val === null || val === "") return def;
@@ -41,12 +46,12 @@ const applyPromoDiscount = (total, promo) => {
 };
 
 const ensureExists = async (Model, id, name) => {
-  if (!id) return true; // optional field
-  if (!isValidObjectId(id)) return { ok: false, message: `Invalid ${name} id` };
+    if (!id) return true; // optional field
+    if (!isValidObjectId(id)) return { ok: false, message: `Invalid ${name} id` };
 
-  const doc = await Model.findOne({ _id: id, isDeleted: false }).select("_id");
-  if (!doc) return { ok: false, message: `${name} not found` };
-  return { ok: true };
+    const doc = await Model.findOne({ _id: id, isDeleted: false }).select("_id");
+    if (!doc) return { ok: false, message: `${name} not found` };
+    return { ok: true };
 };
 
 // CHECK BOOKING PRICE
@@ -377,7 +382,6 @@ const createBooking = async (req, res) => {
     try {
         const payload = req.body || {};
 
-        // Required fields basic validation
         const requiredFields = [
             "fullName",
             "email",
@@ -394,8 +398,6 @@ const createBooking = async (req, res) => {
             "boosterSeats",
             "childSeats",
             "pickupDateOut",
-            "totalPrice",
-            "statusPayment",
             "paymentMethod",
         ];
 
@@ -415,7 +417,7 @@ const createBooking = async (req, res) => {
             );
         }
 
-        // Validate references
+        // ✅ VALIDATE REFERENCES
         const checks = [
             await ensureExists(Location, payload.pickupLocation, "Pickup location"),
             await ensureExists(Location, payload.dropoffLocation, "Dropoff location"),
@@ -431,7 +433,7 @@ const createBooking = async (req, res) => {
             return formatResponse(res, 400, failed.message, null, "Invalid reference");
         }
 
-        // Roundtrip return date validation
+        // ✅ VALIDASI ROUNDTRIP
         if (Boolean(payload.roundtrip) === true && !payload.pickupDateReturn) {
             return formatResponse(
                 res,
@@ -442,13 +444,95 @@ const createBooking = async (req, res) => {
             );
         }
 
-        // Create booking
+        // =========================
+        // 🔥 HITUNG HARGA DI BACKEND
+        // =========================
+
+        const fakeReq = {
+            body: {
+                clientInput: {
+                    passengers: payload.passengers,
+                    pickupLocation: payload.pickupLocation,
+                    dropoffLocation: payload.dropoffLocation,
+                    selectedCar: payload.vehicleId,
+                    roundTrip: payload.roundtrip,
+                    pickupDateOut: payload.pickupDateOut,
+                    pickupDateReturn: payload.pickupDateReturn,
+                    strollerCount: payload.strollers,
+                    babySeatCount: payload.babySeats,
+                    boosterSeatCount: payload.boosterSeats,
+                    childSeatCount: payload.childSeats,
+                },
+            },
+        };
+
+        // panggil logic yang sama
+        let calculatedPrice = 0;
+
+        const priceResult = await (async () => {
+            try {
+                // ambil langsung dari logic (refactor kalau mau lebih clean)
+                const result = await checkBookingPriceInternal(fakeReq.body.clientInput);
+                return result;
+            } catch {
+                return null;
+            }
+        })();
+
+        if (!priceResult) {
+            return formatResponse(res, 400, "Failed to calculate booking price", null);
+        }
+
+        calculatedPrice = priceResult.totalPrice;
+
+        // =========================
+        // ✅ CREATE BOOKING (SAFE)
+        // =========================
+
         const booking = await Booking.create({
             ...payload,
-            statusTrip: payload.statusTrip || "pending",
+            totalPrice: calculatedPrice, // ✅ dari backend
+            statusPayment: false, // ❌ FE tidak boleh set ini
+            statusTrip: "pending",
             isDeleted: false,
             deletedAt: null,
         });
+
+        // =========================
+        // ✅ SEND EMAIL (SAFE)
+        // =========================
+        const populatedBooking = await Booking.findById(booking._id)
+            .populate("pickupLocation")
+            .populate("dropoffLocation")
+            .populate("vehicleId")
+
+        const data = formatBookingEmailData(populatedBooking)
+
+        // HTML
+        const adminHtml = generateAdminBookingEmail(data)
+        const customerHtml = generateBookingEmailCustomer(data)
+
+        // PDF
+        const adminPdf = await generatePdfBuffer(generateAdminBookingPdf(data))
+        const customerPdf = await generatePdfBuffer(generateCustomerBookingPdf(data))
+
+        // SEND ADMIN
+        await sendEmailWithPdf({
+            to: ADMIN_EMAILS,
+            subject: "New Booking Received",
+            html: adminHtml,
+            pdfBuffer: adminPdf,
+            filename: `booking-admin-${booking._id}.pdf`,
+        })
+
+        // SEND CUSTOMER
+        await sendEmailWithPdf({
+            to: booking.email,
+            subject: "Your Booking Confirmation",
+            html: customerHtml,
+            pdfBuffer: customerPdf,
+            filename: `booking-${booking._id}.pdf`,
+        })
 
         return formatResponse(res, 201, "Booking created successfully", booking);
     } catch (error) {
@@ -505,62 +589,94 @@ const getBookingById = async (req, res) => {
 
 // UPDATE BOOKING
 const updateBooking = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { statusTrip, statusPayment } = req.body;
+    try {
+        const { id } = req.params;
+        const { statusTrip } = req.body;
 
-    if (!isValidObjectId(id)) {
-      return formatResponse(res, 400, "Invalid booking id", null, "Validation error");
+        if (!isValidObjectId(id)) {
+            return formatResponse(res, 400, "Invalid booking id", null, "Validation error");
+        }
+
+        const booking = await Booking.findOne({ _id: id, isDeleted: false });
+        if (!booking) {
+            return formatResponse(res, 404, "Booking not found", null, "Not found");
+        }
+
+        // ❌ wajib kirim statusTrip
+        if (!statusTrip) {
+            return formatResponse(
+                res,
+                400,
+                "statusTrip is required",
+                null,
+                "Validation error"
+            );
+        }
+
+        const allowedStatusTrip = ["pending", "confirmed", "cancelled", "completed"];
+
+        if (!allowedStatusTrip.includes(statusTrip)) {
+            return formatResponse(
+                res,
+                400,
+                "Invalid statusTrip value",
+                null,
+                "Validation error"
+            );
+        }
+
+        // ✅ set statusTrip
+        booking.statusTrip = statusTrip;
+
+        // ✅ auto control statusPayment
+        if (statusTrip === "completed") {
+            booking.statusPayment = true;
+        } else {
+            booking.statusPayment = false;
+        }
+
+        await booking.save();
+
+        // ✅ send email
+        const populatedBooking = await Booking.findById(booking._id)
+            .populate("pickupLocation")
+            .populate("dropoffLocation")
+            .populate("vehicleId")
+
+        const data = formatBookingEmailData(populatedBooking)
+
+        // generate ulang email + pdf
+        const adminHtml = generateAdminBookingEmail(data)
+        const customerHtml = generateBookingEmailCustomer(data)
+
+        const adminPdf = await generatePdfBuffer(generateAdminBookingPdf(data))
+        const customerPdf = await generatePdfBuffer(generateCustomerBookingPdf(data))
+
+        await sendEmailWithPdf({
+            to: ADMIN_EMAILS,
+            subject: "Booking Updated",
+            html: adminHtml,
+            pdfBuffer: adminPdf,
+            filename: `booking-admin-${booking._id}.pdf`,
+        })
+
+        await sendEmailWithPdf({
+            to: booking.email,
+            subject: "Your Booking Status Updated",
+            html: customerHtml,
+            pdfBuffer: customerPdf,
+            filename: `booking-${booking._id}.pdf`,
+        })
+
+        return formatResponse(res, 200, "Booking updated successfully", {
+            id: booking._id,
+            statusTrip: booking.statusTrip,
+            statusPayment: booking.statusPayment,
+        });
+
+    } catch (error) {
+        return formatResponse(res, 500, "Internal server error", null, error.message);
     }
-
-    const booking = await Booking.findOne({ _id: id, isDeleted: false });
-    if (!booking) {
-      return formatResponse(res, 404, "Booking not found", null, "Not found");
-    }
-
-    // Validate statusTrip if provided
-    if (statusTrip !== undefined) {
-      const allowedStatusTrip = ["pending", "confirmed", "cancelled", "completed"];
-
-      if (!allowedStatusTrip.includes(statusTrip)) {
-        return formatResponse(
-          res,
-          400,
-          "Invalid statusTrip value",
-          null,
-          "Validation error"
-        );
-      }
-
-      booking.statusTrip = statusTrip;
-    }
-
-    // Validate statusPayment if provided
-    if (statusPayment !== undefined) {
-      if (typeof statusPayment !== "boolean") {
-        return formatResponse(
-          res,
-          400,
-          "statusPayment must be boolean",
-          null,
-          "Validation error"
-        );
-      }
-
-      booking.statusPayment = statusPayment;
-    }
-
-    await booking.save();
-
-    return formatResponse(res, 200, "Booking updated successfully", {
-      id: booking._id,
-      statusTrip: booking.statusTrip,
-      statusPayment: booking.statusPayment,
-    });
-
-  } catch (error) {
-    return formatResponse(res, 500, "Internal server error", null, error.message);
-  }
 };
 
 // DELETE BOOKING
@@ -588,11 +704,71 @@ const deleteBooking = async (req, res) => {
     }
 };
 
+// ADMIN PDF DOWNLOAD
+const downloadAdminBookingPdf = async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const booking = await Booking.findById(id)
+            .populate("pickupLocation")
+            .populate("dropoffLocation")
+            .populate("vehicleId")
+
+        if (!booking) {
+            return formatResponse(res, 404, "Booking not found")
+        }
+
+        const data = formatBookingEmailData(booking)
+        const html = generateAdminBookingPdf(data)
+        const pdfBuffer = await generatePdfBuffer(html)
+
+        res.set({
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename=booking-admin-${id}.pdf`,
+        })
+
+        return res.send(pdfBuffer)
+    } catch (error) {
+        return formatResponse(res, 500, "Failed generate pdf", null, error.message)
+    }
+}
+
+// CUSTOMER PDF DOWNLOAD
+const downloadCustomerBookingPdf = async (req, res) => {
+    try {
+        const { id } = req.params
+
+        const booking = await Booking.findById(id)
+            .populate("pickupLocation")
+            .populate("dropoffLocation")
+            .populate("vehicleId")
+
+        if (!booking) {
+            return formatResponse(res, 404, "Booking not found")
+        }
+
+        const data = formatBookingEmailData(booking)
+        const html = generateCustomerBookingPdf(data)
+        const pdfBuffer = await generatePdfBuffer(html)
+
+        res.set({
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename=booking-customer-${id}.pdf`,
+        })
+
+        return res.send(pdfBuffer)
+    } catch (error) {
+        return formatResponse(res, 500, "Failed generate pdf", null, error.message)
+    }
+}
+
 module.exports = {
-  createBooking,
-  getAllBookings,
-  getBookingById,
-  updateBooking,
-  deleteBooking,
-  checkBookingPrice
+    createBooking,
+    getAllBookings,
+    getBookingById,
+    updateBooking,
+    deleteBooking,
+    checkBookingPrice,
+    downloadAdminBookingPdf,
+    downloadCustomerBookingPdf
 };

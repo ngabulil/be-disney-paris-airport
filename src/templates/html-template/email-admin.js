@@ -1,5 +1,3 @@
-// utils/bookingAdminEmail.template.js
-
 const generateAdminBookingEmail = (data) => {
   return `
 <!DOCTYPE html>
