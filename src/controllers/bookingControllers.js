@@ -502,9 +502,13 @@ const createBooking = async (req, res) => {
         // ✅ SEND EMAIL (SAFE)
         // =========================
         const populatedBooking = await Booking.findById(booking._id)
-            .populate("pickupLocation")
-            .populate("dropoffLocation")
-            .populate("vehicleId")
+            .populate("pickupLocation", "name locationType")
+            .populate("dropoffLocation", "name locationType")
+            .populate("pickupHotel", "name")
+            .populate("dropoffHotel", "name")
+            .populate("pickupTerminal", "name location")
+            .populate("dropoffTerminal", "name location")
+            .populate("vehicleId", "name bookingType vehicleType maxPassenger maxUnit maxStroller");
 
         const data = formatBookingEmailData(populatedBooking)
 
@@ -639,9 +643,13 @@ const updateBooking = async (req, res) => {
 
         // ✅ send email
         const populatedBooking = await Booking.findById(booking._id)
-            .populate("pickupLocation")
-            .populate("dropoffLocation")
-            .populate("vehicleId")
+            .populate("pickupLocation", "name locationType")
+            .populate("dropoffLocation", "name locationType")
+            .populate("pickupHotel", "name")
+            .populate("dropoffHotel", "name")
+            .populate("pickupTerminal", "name location")
+            .populate("dropoffTerminal", "name location")
+            .populate("vehicleId", "name bookingType vehicleType maxPassenger maxUnit maxStroller");
 
         const data = formatBookingEmailData(populatedBooking)
 
@@ -710,9 +718,13 @@ const downloadAdminBookingPdf = async (req, res) => {
         const { id } = req.params
 
         const booking = await Booking.findById(id)
-            .populate("pickupLocation")
-            .populate("dropoffLocation")
-            .populate("vehicleId")
+            .populate("pickupLocation", "name locationType")
+            .populate("dropoffLocation", "name locationType")
+            .populate("pickupHotel", "name")
+            .populate("dropoffHotel", "name")
+            .populate("pickupTerminal", "name location")
+            .populate("dropoffTerminal", "name location")
+            .populate("vehicleId", "name bookingType vehicleType maxPassenger maxUnit maxStroller");
 
         if (!booking) {
             return formatResponse(res, 404, "Booking not found")
@@ -739,9 +751,13 @@ const downloadCustomerBookingPdf = async (req, res) => {
         const { id } = req.params
 
         const booking = await Booking.findById(id)
-            .populate("pickupLocation")
-            .populate("dropoffLocation")
-            .populate("vehicleId")
+            .populate("pickupLocation", "name locationType")
+            .populate("dropoffLocation", "name locationType")
+            .populate("pickupHotel", "name")
+            .populate("dropoffHotel", "name")
+            .populate("pickupTerminal", "name location")
+            .populate("dropoffTerminal", "name location")
+            .populate("vehicleId", "name bookingType vehicleType maxPassenger maxUnit maxStroller");
 
         if (!booking) {
             return formatResponse(res, 404, "Booking not found")

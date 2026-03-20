@@ -8,8 +8,8 @@ const generateAdminBookingEmail = (data) => {
 <tr>
 <td align="center">
 
-<table width="600" cellpadding="0" cellspacing="0"
-style="max-width:600px;background:#0c223a;border-radius:12px;border:1px solid #1f3a5c;padding:30px;">
+<table width="700" cellpadding="0" cellspacing="0"
+style="max-width:700px;background:#0c223a;border-radius:12px;border:1px solid #1f3a5c;padding:30px;">
 
 <tr>
 <td align="center" style="padding-bottom:15px;">
@@ -27,11 +27,12 @@ New Booking Received
 <td style="color:#cbd5e1;font-size:14px;padding:15px 0;line-height:20px;">
 <strong>Booking ID:</strong> ${data.bookingId}<br/>
 <strong>Received:</strong> ${data.receivedDate}<br/>
+<strong>Created At:</strong> ${data.createdAt}<br/>
+<strong>Updated At:</strong> ${data.updatedAt}<br/>
 <strong>Source:</strong> Website
 </td>
 </tr>
 
-<!-- Customer -->
 <tr>
 <td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:10px;">
 Customer
@@ -40,13 +41,12 @@ Customer
 
 <tr>
 <td style="color:#cbd5e1;font-size:14px;line-height:22px;">
-• Name: ${data.fullName}<br/>
-• Phone: ${data.phoneNumber}<br/>
-• Email: ${data.email}
+<strong>Name:</strong> ${data.fullName}<br/>
+<strong>Phone:</strong> ${data.phoneNumber}<br/>
+<strong>Email:</strong> ${data.email}
 </td>
 </tr>
 
-<!-- Transfer -->
 <tr>
 <td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:20px;">
 Transfer Details
@@ -55,46 +55,44 @@ Transfer Details
 
 <tr>
 <td style="color:#cbd5e1;font-size:14px;line-height:22px;">
-<strong>From:</strong> ${data.from}<br/>
-<strong>To:</strong> ${data.to}<br/><br/>
-• Pickup date: ${data.pickupDate}<br/>
-• Pickup time: ${data.pickupTime}<br/>
-• Flight number: ${data.flightNumber}<br/>
-• Arrival terminal: ${data.terminal}
+<strong>Pickup Location:</strong> ${data.pickupLocation} (${data.pickupLocationType})<br/>
+<strong>Dropoff Location:</strong> ${data.dropoffLocation} (${data.dropoffLocationType})<br/>
+<strong>Pickup Hotel:</strong> ${data.pickupHotel}<br/>
+<strong>Dropoff Hotel:</strong> ${data.dropoffHotel}<br/>
+<strong>Pickup Terminal:</strong> ${data.pickupTerminal}<br/>
+<strong>Pickup Terminal Location:</strong> ${data.pickupTerminalLocation}<br/>
+<strong>Dropoff Terminal:</strong> ${data.dropoffTerminal}<br/>
+<strong>Dropoff Terminal Location:</strong> ${data.dropoffTerminalLocation}<br/>
+<strong>Pickup Flight Number:</strong> ${data.pickupFlightNumber}<br/>
+<strong>Dropoff Flight Number:</strong> ${data.dropoffFlightNumber}<br/>
+<strong>Pickup Address:</strong> ${data.pickupAddress}<br/>
+<strong>Dropoff Address:</strong> ${data.dropoffAddress}<br/>
+<strong>Pickup Date:</strong> ${data.pickupDateOutFormatted}<br/>
+<strong>Pickup Time:</strong> ${data.pickupTimeOutFormatted}<br/>
+<strong>Return Date:</strong> ${data.pickupDateReturnFormatted}<br/>
+<strong>Return Time:</strong> ${data.pickupTimeReturnFormatted}<br/>
+<strong>Roundtrip:</strong> ${data.roundtrip ? "Yes" : "No"}
 </td>
 </tr>
 
-<!-- Passenger -->
 <tr>
 <td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:20px;">
-Passengers
+Passengers & Luggage
 </td>
 </tr>
 
 <tr>
 <td style="color:#cbd5e1;font-size:14px;line-height:22px;">
-• Total: ${data.passengers}<br/>
-• Child seats: ${data.childSeats}<br/>
-• Baby seats: ${data.babySeats}<br/>
-• Booster seats: ${data.boosterSeats}
+<strong>Passengers:</strong> ${data.passengers}<br/>
+<strong>Suitcases:</strong> ${data.suitcases}<br/>
+<strong>Hand Luggage:</strong> ${data.handLuggage}<br/>
+<strong>Strollers:</strong> ${data.strollers}<br/>
+<strong>Child Seats:</strong> ${data.childSeats}<br/>
+<strong>Baby Seats:</strong> ${data.babySeats}<br/>
+<strong>Booster Seats:</strong> ${data.boosterSeats}
 </td>
 </tr>
 
-<!-- Luggage -->
-<tr>
-<td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:20px;">
-Luggage
-</td>
-</tr>
-
-<tr>
-<td style="color:#cbd5e1;font-size:14px;">
-• Hand luggage: ${data.handLuggage}<br/>
-• Suitcases: ${data.suitcases}
-</td>
-</tr>
-
-<!-- Vehicle -->
 <tr>
 <td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:20px;">
 Vehicle
@@ -102,36 +100,30 @@ Vehicle
 </tr>
 
 <tr>
-<td style="color:#cbd5e1;font-size:14px;">
-Transport class: ${data.vehicle}
+<td style="color:#cbd5e1;font-size:14px;line-height:22px;">
+<strong>Transport Class:</strong> ${data.vehicle}<br/>
+<strong>Booking Type:</strong> ${data.vehicleBookingType}<br/>
+<strong>Vehicle Type:</strong> ${data.vehicleType}<br/>
+<strong>Max Passenger:</strong> ${data.vehicleMaxPassenger}<br/>
+<strong>Max Unit:</strong> ${data.vehicleMaxUnit}<br/>
+<strong>Max Stroller:</strong> ${data.vehicleMaxStroller}
 </td>
 </tr>
 
-<!-- Payment -->
 <tr>
 <td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:20px;">
-Payment
+Payment & Status
 </td>
 </tr>
 
 <tr>
-<td style="color:#cbd5e1;font-size:14px;">
-• Method: ${data.paymentMethod}<br/>
-• Amount: ${data.totalPrice}<br/>
-• Status: ${data.statusPayment ? "Paid" : "Unpaid"}
-</td>
-</tr>
-
-<!-- Notes -->
-<tr>
-<td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:20px;">
-Notes
-</td>
-</tr>
-
-<tr>
-<td style="color:#cbd5e1;font-size:14px;">
-${data.notes || "-"}
+<td style="color:#cbd5e1;font-size:14px;line-height:22px;">
+<strong>Method:</strong> ${data.paymentMethod}<br/>
+<strong>Amount:</strong> ${data.totalPrice}<br/>
+<strong>Status Payment:</strong> ${data.statusPayment ? "Paid" : "Unpaid"}<br/>
+<strong>Status Trip:</strong> ${data.statusTrip}<br/>
+<strong>Deleted:</strong> ${data.isDeleted ? "Yes" : "No"}<br/>
+<strong>Deleted At:</strong> ${data.deletedAt}
 </td>
 </tr>
 
@@ -142,9 +134,9 @@ ${data.notes || "-"}
 
 </body>
 </html>
-`
-}
+`;
+};
 
 module.exports = {
   generateAdminBookingEmail,
-}
+};

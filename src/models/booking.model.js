@@ -50,6 +50,14 @@
             type: String,
             trim: true,
         },
+        pickupAddress: {
+            type: String,
+            trim: true,
+        },
+        dropoffAddress: {
+            type: String,
+            trim: true,
+        },
         vehicleId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Vehicle",
