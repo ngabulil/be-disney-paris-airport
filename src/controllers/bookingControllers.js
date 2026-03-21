@@ -5,10 +5,16 @@ const Location = require("../models/location.model");
 const Hotel = require("../models/hotel.model");
 const Terminal = require("../models/terminal.model");
 const Vehicle = require("../models/vehicle.model");
+const Trip = require("../models/trip.model");
+const PricingVehicle = require("../models/pricingVehicle.model");
+const Promo = require("../models/promo.model");
 const { formatBookingEmailData } = require("../format/bookingFormat");
 const { generateAdminBookingPdf } = require("../templates/pdf-template/pdf-admin");
 const { generatePdfBuffer } = require("../utils/pdfGenerator");
 const { generateCustomerBookingPdf } = require("../templates/pdf-template/pdf-customer");
+const { generateAdminBookingEmail } = require("../templates/html-template/email-admin");
+const { generateBookingEmailCustomer } = require("../templates/html-template/email-customer");
+const { sendEmailWithPdf } = require("../utils/mailer");
 
 const ADMIN_EMAILS = process.env.ADMIN_EMAILS.split(",");
 
@@ -54,323 +60,217 @@ const ensureExists = async (Model, id, name) => {
     return { ok: true };
 };
 
+// BOOKING CHECK INTERNAL
+const checkBookingPriceInternal = async (clientInputRaw) => {
+    const passengers = toNumber(clientInputRaw.passengers, null);
+    const pickupLocation = clientInputRaw.pickupLocation || null;
+    const dropoffLocation = clientInputRaw.dropoffLocation || null;
+
+    const unitCount = toNumber(clientInputRaw.unitCount, 0);
+    const strollerCount = toNumber(clientInputRaw.strollerCount, 0);
+
+    const roundTrip = Boolean(clientInputRaw.roundTrip);
+
+    const pickupDateOut = clientInputRaw.pickupDateOut || null;
+    const pickupDateReturn = clientInputRaw.pickupDateReturn || null;
+
+    const selectedCar = clientInputRaw.selectedCar || clientInputRaw.vehicle || null;
+
+    const promoCodeRaw = (clientInputRaw.promoCode || "").trim();
+    const promoCode = promoCodeRaw.length ? promoCodeRaw : null;
+
+    if (passengers === null || Number.isNaN(passengers) || passengers <= 0) {
+        throw new Error("Passengers is required and must be greater than 0");
+    }
+
+    const nonNegativeFields = [
+        { key: "unitCount", value: unitCount },
+        { key: "strollerCount", value: strollerCount },
+    ];
+
+    for (const f of nonNegativeFields) {
+        if (f.value < 0) {
+            throw new Error(`${f.key} must be a non-negative number`);
+        }
+    }
+
+    if (pickupLocation && !isValidObjectId(pickupLocation)) {
+        throw new Error("Invalid pickupLocation id");
+    }
+
+    if (dropoffLocation && !isValidObjectId(dropoffLocation)) {
+        throw new Error("Invalid dropoffLocation id");
+    }
+
+    if (selectedCar && !isValidObjectId(selectedCar)) {
+        throw new Error("Invalid selectedCar id");
+    }
+
+    const requiredPassengerCapacity = passengers;
+
+    let vehicles = await Vehicle.find({ isDeleted: false }).select(
+        "_id name photo bookingType vehicleType maxPassenger maxUnit maxStroller"
+    );
+
+    vehicles = vehicles.filter((v) => {
+        if (requiredPassengerCapacity > v.maxPassenger) return false;
+        if (unitCount > v.maxUnit) return false;
+        if (strollerCount > v.maxStroller) return false;
+        return true;
+    });
+
+    let tripDoc = null;
+    let pricingListForTrip = null;
+
+    if (pickupLocation && dropoffLocation) {
+        tripDoc = await Trip.findOne({
+            pickupLocation,
+            dropoffLocation,
+            isDeleted: false,
+        });
+
+        if (!tripDoc) {
+            return {
+                totalPrice: 0,
+                availableVehicle: [],
+                clientInput: {
+                    passengers,
+                    pickupLocation,
+                    dropoffLocation,
+                    unitCount,
+                    roundTrip,
+                    strollerCount,
+                    pickupDateOut,
+                    pickupDateReturn,
+                    selectedCar,
+                    promoCode,
+                },
+            };
+        }
+
+        pricingListForTrip = await PricingVehicle.find({
+            trip: tripDoc._id,
+            isDeleted: false,
+        }).select("vehicle price");
+
+        const allowedVehicleIds = new Set(
+            pricingListForTrip.map((p) => String(p.vehicle))
+        );
+
+        vehicles = vehicles.filter((v) => allowedVehicleIds.has(String(v._id)));
+    }
+
+    let totalPrice = 0;
+
+    if (tripDoc && selectedCar) {
+        const selectedVehicleDoc = await Vehicle.findOne({
+            _id: selectedCar,
+            isDeleted: false,
+        });
+
+        if (!selectedVehicleDoc) {
+            throw new Error("Selected vehicle not found");
+        }
+
+        const meetsCapacity = requiredPassengerCapacity <= selectedVehicleDoc.maxPassenger;
+        const meetsUnit = unitCount <= selectedVehicleDoc.maxUnit;
+        const meetsStroller = strollerCount <= selectedVehicleDoc.maxStroller;
+
+        if (!meetsCapacity || !meetsUnit || !meetsStroller) {
+            throw new Error("Selected vehicle does not match your booking requirements");
+        }
+
+        let pricing = null;
+
+        if (pricingListForTrip) {
+            pricing =
+                pricingListForTrip.find(
+                    (p) => String(p.vehicle) === String(selectedCar)
+                ) || null;
+        } else {
+            pricing = await PricingVehicle.findOne({
+                trip: tripDoc._id,
+                vehicle: selectedCar,
+                isDeleted: false,
+            });
+        }
+
+        if (!pricing) {
+            throw new Error("Pricing not found for this trip and vehicle");
+        }
+
+        const basePrice = Number(pricing.price);
+        const NIGHT_SURCHARGE_FLAT = 25;
+
+        totalPrice = roundTrip ? basePrice * 2 : basePrice;
+
+        if (isNightSurcharge(pickupDateOut)) totalPrice += NIGHT_SURCHARGE_FLAT;
+        if (roundTrip && isNightSurcharge(pickupDateReturn)) {
+            totalPrice += NIGHT_SURCHARGE_FLAT;
+        }
+
+        if (promoCode) {
+            const promo = await Promo.findOne({
+                promoCode,
+                isDeleted: false,
+                isValid: true,
+            });
+
+            if (!promo) {
+                throw new Error("Invalid promo code");
+            }
+
+            if (promo.allowedTripId && String(promo.allowedTripId) !== String(tripDoc._id)) {
+                throw new Error("Promo code is not valid for this trip");
+            }
+
+            if (
+                promo.allowedBookingType &&
+                promo.allowedBookingType !== selectedVehicleDoc.bookingType
+            ) {
+                throw new Error("Promo code is not valid for this booking type");
+            }
+
+            if (promo.roundtrip !== undefined && promo.roundtrip !== null) {
+                if (Boolean(promo.roundtrip) !== Boolean(roundTrip)) {
+                    throw new Error("Promo code is not valid for this trip type");
+                }
+            }
+
+            const { totalAfterDiscount } = applyPromoDiscount(totalPrice, promo);
+            totalPrice = totalAfterDiscount;
+        }
+    }
+
+    return {
+        totalPrice,
+        availableVehicle: vehicles,
+        clientInput: {
+            passengers,
+            pickupLocation,
+            dropoffLocation,
+            unitCount,
+            roundTrip,
+            strollerCount,
+            pickupDateOut,
+            pickupDateReturn,
+            selectedCar,
+            promoCode,
+        },
+    };
+};
+
 // CHECK BOOKING PRICE
 const checkBookingPrice = async (req, res) => {
     try {
-        // FE sends: { clientInput: { ... } }
-        const clientInputRaw = req.body?.clientInput || {};
+        const result = await checkBookingPriceInternal(req.body?.clientInput || {});
 
-        // normalize inputs (dynamic / partial)
-        const passengers = toNumber(clientInputRaw.passengers, null);
-        const pickupLocation = clientInputRaw.pickupLocation || null;
-        const dropoffLocation = clientInputRaw.dropoffLocation || null;
-
-        const unitCount = toNumber(clientInputRaw.unitCount, 0);
-        const strollerCount = toNumber(clientInputRaw.strollerCount, 0);
-
-        const babySeatCount = toNumber(clientInputRaw.babySeatCount, 0);
-        const boosterSeatCount = toNumber(clientInputRaw.boosterSeatCount, 0);
-        const childSeatCount = toNumber(clientInputRaw.childSeatCount, 0);
-
-        const roundTrip = Boolean(clientInputRaw.roundTrip);
-
-        const pickupDateOut = clientInputRaw.pickupDateOut || null;
-        const pickupDateReturn = clientInputRaw.pickupDateReturn || null;
-
-        // selectedCar is the chosen vehicle (step 9)
-        const selectedCar = clientInputRaw.selectedCar || clientInputRaw.vehicle || null;
-
-        const promoCodeRaw = (clientInputRaw.promoCode || "").trim();
-        const promoCode = promoCodeRaw.length ? promoCodeRaw : null;
-
-        // passengers is required for availability logic
-        if (passengers === null || Number.isNaN(passengers) || passengers <= 0) {
-            return formatResponse(
-                res,
-                400,
-                "Passengers is required and must be greater than 0",
-                {
-                    result: {
-                        availablePassangers: 0,
-                        totalPrice: 0,
-                        availableVehicle: [],
-                    },
-                    clientInput: clientInputRaw,
-                },
-                "Validation error"
-            );
-        }
-
-        // validate numeric counts
-        const nonNegativeFields = [
-            { key: "unitCount", value: unitCount },
-            { key: "strollerCount", value: strollerCount },
-            { key: "babySeatCount", value: babySeatCount },
-            { key: "boosterSeatCount", value: boosterSeatCount },
-            { key: "childSeatCount", value: childSeatCount },
-        ];
-        for (const f of nonNegativeFields) {
-            if (f.value < 0) {
-                return formatResponse(
-                    res,
-                    400,
-                    `${f.key} must be a non-negative number`,
-                    null,
-                    "Validation error"
-                );
-            }
-        }
-
-        // validate ids if provided
-        if (pickupLocation && !isValidObjectId(pickupLocation)) {
-            return formatResponse(res, 400, "Invalid pickupLocation id", null, "Validation error");
-        }
-        if (dropoffLocation && !isValidObjectId(dropoffLocation)) {
-            return formatResponse(res, 400, "Invalid dropoffLocation id", null, "Validation error");
-        }
-        if (selectedCar && !isValidObjectId(selectedCar)) {
-            return formatResponse(res, 400, "Invalid selectedCar id", null, "Validation error");
-        }
-
-        // pickup and dropoff cannot be same (only if both exist)
-        if (pickupLocation && dropoffLocation && pickupLocation === dropoffLocation) {
-            return formatResponse(
-                res,
-                400,
-                "Pickup and dropoff locations cannot be the same",
-                null,
-                "Invalid request"
-            );
-        }
-
-        // seats consume capacity (assumption):
-        // requiredCapacity = passengers + (baby+booster+child seat count)
-        const requiredPassengerCapacity =
-            passengers + babySeatCount + boosterSeatCount + childSeatCount;
-
-        // 1) Base available vehicles (filter by capacity/unit/stroller first)
-        let vehicles = await Vehicle.find({ isDeleted: false }).select(
-            "_id name bookingType vehicleType maxPassenger maxUnit maxStroller"
-        );
-
-        vehicles = vehicles.filter((v) => {
-            if (requiredPassengerCapacity > v.maxPassenger) return false;
-            if (unitCount > 0 && unitCount > v.maxUnit) return false;
-            if (strollerCount > 0 && strollerCount > v.maxStroller) return false;
-            return true;
-        });
-
-        // 2) If pickup+dropoff exist, restrict to vehicles that have pricing for the trip
-        let tripDoc = null;
-        let pricingListForTrip = null;
-
-        if (pickupLocation && dropoffLocation) {
-            tripDoc = await Trip.findOne({
-                pickupLocation,
-                dropoffLocation,
-                isDeleted: false,
-            });
-
-            if (!tripDoc) {
-                return formatResponse(
-                    res,
-                    404,
-                    "Trip not found for selected pickup and dropoff locations",
-                    {
-                        result: {
-                            availablePassangers: requiredPassengerCapacity,
-                            totalPrice: 0,
-                            availableVehicle: [],
-                        },
-                        clientInput: {
-                            passengers,
-                            pickupLocation,
-                            dropoffLocation,
-                            unitCount,
-                            roundTrip,
-                            strollerCount,
-                            babySeatCount,
-                            boosterSeatCount,
-                            childSeatCount,
-                            pickupDateOut,
-                            pickupDateReturn,
-                            selectedCar,
-                            promoCode,
-                        },
-                    },
-                    "Trip not available"
-                );
-            }
-
-            pricingListForTrip = await PricingVehicle.find({
-                trip: tripDoc._id,
-                isDeleted: false,
-            }).select("vehicle price");
-
-            const allowedVehicleIds = new Set(pricingListForTrip.map((p) => String(p.vehicle)));
-
-            vehicles = vehicles.filter((v) => allowedVehicleIds.has(String(v._id)));
-        }
-
-        // 3) total price (only if trip + selectedCar exists)
-        let totalPrice = 0;
-
-        if (tripDoc && selectedCar) {
-            // validate selected vehicle exists & not deleted
-            const selectedVehicleDoc = await Vehicle.findOne({
-                _id: selectedCar,
-                isDeleted: false,
-            });
-
-            if (!selectedVehicleDoc) {
-                return formatResponse(
-                    res,
-                    404,
-                    "Selected vehicle not found",
-                    null,
-                    "Invalid vehicle reference"
-                );
-            }
-
-            // also validate selected vehicle still meets constraints (passenger/unit/stroller)
-            const meetsCapacity = requiredPassengerCapacity <= selectedVehicleDoc.maxPassenger;
-            const meetsUnit = unitCount <= selectedVehicleDoc.maxUnit;
-            const meetsStroller = strollerCount <= selectedVehicleDoc.maxStroller;
-
-            if (!meetsCapacity || !meetsUnit || !meetsStroller) {
-                return formatResponse(
-                    res,
-                    400,
-                    "Selected vehicle does not match your booking requirements",
-                    null,
-                    "Vehicle not available"
-                );
-            }
-
-            // find pricing (use cached list if available)
-            let pricing = null;
-            if (pricingListForTrip) {
-                pricing = pricingListForTrip.find((p) => String(p.vehicle) === String(selectedCar)) || null;
-            } else {
-                pricing = await PricingVehicle.findOne({
-                    trip: tripDoc._id,
-                    vehicle: selectedCar,
-                    isDeleted: false,
-                });
-            }
-
-            if (!pricing) {
-                return formatResponse(
-                    res,
-                    404,
-                    "Pricing not found for this trip and vehicle",
-                    null,
-                    "Pricing not available"
-                );
-            }
-
-            const basePrice = Number(pricing.price);
-
-            const NIGHT_SURCHARGE_FLAT = 25;
-
-            // base total
-            totalPrice = roundTrip ? basePrice * 2 : basePrice;
-
-            // night surcharge (+25 flat per leg)
-            if (isNightSurcharge(pickupDateOut)) totalPrice += NIGHT_SURCHARGE_FLAT;
-            if (roundTrip && isNightSurcharge(pickupDateReturn)) totalPrice += NIGHT_SURCHARGE_FLAT;
-
-            // promo code
-            if (promoCode) {
-                const promo = await Promo.findOne({
-                    promoCode,
-                    isDeleted: false,
-                    isValid: true,
-                });
-
-                if (!promo) {
-                    return formatResponse(
-                        res,
-                        400,
-                        "Invalid promo code",
-                        {
-                            result: {
-                                availablePassangers: requiredPassengerCapacity,
-                                totalPrice,
-                                availableVehicle: vehicles,
-                            },
-                            clientInput: {
-                                passengers,
-                                pickupLocation,
-                                dropoffLocation,
-                                unitCount,
-                                roundTrip,
-                                strollerCount,
-                                babySeatCount,
-                                boosterSeatCount,
-                                childSeatCount,
-                                pickupDateOut,
-                                pickupDateReturn,
-                                selectedCar,
-                                promoCode,
-                            },
-                        },
-                        "Promo not found"
-                    );
-                }
-
-                // validate promo rules (optional constraints)
-                if (promo.allowedTripId && String(promo.allowedTripId) !== String(tripDoc._id)) {
-                    return formatResponse(res, 400, "Promo code is not valid for this trip", null, "Promo rule");
-                }
-                if (promo.allowedBookingType && promo.allowedBookingType !== selectedVehicleDoc.bookingType) {
-                    return formatResponse(
-                        res,
-                        400,
-                        "Promo code is not valid for this booking type",
-                        null,
-                        "Promo rule"
-                    );
-                }
-                if (promo.roundtrip !== undefined && promo.roundtrip !== null) {
-                    if (Boolean(promo.roundtrip) !== Boolean(roundTrip)) {
-                        return formatResponse(
-                            res,
-                            400,
-                            "Promo code is not valid for this trip type",
-                            null,
-                            "Promo rule"
-                        );
-                    }
-                }
-
-                const { totalAfterDiscount } = applyPromoDiscount(totalPrice, promo);
-                totalPrice = totalAfterDiscount;
-            }
-        }
-
-        // final response shape (data contains your structure)
         return formatResponse(res, 200, "Booking calculation retrieved successfully", {
             result: {
-                availablePassangers: requiredPassengerCapacity,
-                totalPrice,
-                availableVehicle: vehicles,
+                totalPrice: result.totalPrice,
+                availableVehicle: result.availableVehicle,
             },
-            clientInput: {
-                passengers,
-                pickupLocation,
-                dropoffLocation,
-                unitCount,
-                roundTrip,
-                strollerCount,
-                babySeatCount,
-                boosterSeatCount,
-                childSeatCount,
-                pickupDateOut,
-                pickupDateReturn,
-                selectedCar,
-                promoCode,
-            },
+            clientInput: result.clientInput,
         });
     } catch (error) {
         return formatResponse(res, 500, "Internal server error", null, error.message);
@@ -448,42 +348,26 @@ const createBooking = async (req, res) => {
         // 🔥 HITUNG HARGA DI BACKEND
         // =========================
 
-        const fakeReq = {
-            body: {
-                clientInput: {
-                    passengers: payload.passengers,
-                    pickupLocation: payload.pickupLocation,
-                    dropoffLocation: payload.dropoffLocation,
-                    selectedCar: payload.vehicleId,
-                    roundTrip: payload.roundtrip,
-                    pickupDateOut: payload.pickupDateOut,
-                    pickupDateReturn: payload.pickupDateReturn,
-                    strollerCount: payload.strollers,
-                    babySeatCount: payload.babySeats,
-                    boosterSeatCount: payload.boosterSeats,
-                    childSeatCount: payload.childSeats,
-                },
-            },
+        const clientInput = {
+            passengers: payload.passengers,
+            pickupLocation: payload.pickupLocation,
+            dropoffLocation: payload.dropoffLocation,
+            selectedCar: payload.vehicleId,
+            roundTrip: payload.roundtrip,
+            pickupDateOut: payload.pickupDateOut,
+            pickupDateReturn: payload.pickupDateReturn,
+            strollerCount: payload.strollers,
+            unitCount: toNumber(payload.suitcases, 0) * 2 + toNumber(payload.handLuggage, 0),
+            promoCode: payload.promoCode || "",
         };
 
-        // panggil logic yang sama
-        let calculatedPrice = 0;
-
-        const priceResult = await (async () => {
-            try {
-                // ambil langsung dari logic (refactor kalau mau lebih clean)
-                const result = await checkBookingPriceInternal(fakeReq.body.clientInput);
-                return result;
-            } catch {
-                return null;
-            }
-        })();
+        const priceResult = await checkBookingPriceInternal(clientInput);
 
         if (!priceResult) {
             return formatResponse(res, 400, "Failed to calculate booking price", null);
         }
 
-        calculatedPrice = priceResult.totalPrice;
+        const calculatedPrice = priceResult.totalPrice;
 
         // =========================
         // ✅ CREATE BOOKING (SAFE)

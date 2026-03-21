@@ -7,6 +7,11 @@ const vehicleSchema = new mongoose.Schema(
       required: true,
       trim: true
     },
+    photo: {
+      type: String,
+      required: true,
+      trim: true
+    },
     bookingType: {
       type: String,
       required: true,

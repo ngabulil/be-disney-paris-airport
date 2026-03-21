@@ -13,7 +13,8 @@ const createVehicle = async (req, res) => {
       vehicleType,
       maxPassenger,
       maxUnit,
-      maxStroller
+      maxStroller,
+      photo
     } = req.body;
 
     if (
@@ -22,7 +23,8 @@ const createVehicle = async (req, res) => {
       !vehicleType ||
       maxPassenger == null ||
       maxUnit == null ||
-      maxStroller == null
+      maxStroller == null ||
+      !photo
     ) {
       return formatResponse(
         res,
@@ -59,7 +61,8 @@ const createVehicle = async (req, res) => {
       vehicleType,
       maxPassenger,
       maxUnit,
-      maxStroller
+      maxStroller,
+      photo
     });
 
     return formatResponse(res, 201, "Vehicle created successfully", vehicle);
@@ -143,7 +146,8 @@ const updateVehicle = async (req, res) => {
       vehicleType,
       maxPassenger,
       maxUnit,
-      maxStroller
+      maxStroller,
+      photo
     } = req.body;
 
     if (bookingType && !BOOKING_TYPES.includes(bookingType)) {
@@ -172,6 +176,7 @@ const updateVehicle = async (req, res) => {
     if (maxPassenger !== undefined) vehicle.maxPassenger = maxPassenger;
     if (maxUnit !== undefined) vehicle.maxUnit = maxUnit;
     if (maxStroller !== undefined) vehicle.maxStroller = maxStroller;
+    if (photo !== undefined) vehicle.photo = photo;
 
     await vehicle.save();
 
