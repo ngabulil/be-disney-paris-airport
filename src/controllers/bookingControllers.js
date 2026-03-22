@@ -15,6 +15,9 @@ const { generateCustomerBookingPdf } = require("../templates/pdf-template/pdf-cu
 const { generateAdminBookingEmail } = require("../templates/html-template/email-admin");
 const { generateBookingEmailCustomer } = require("../templates/html-template/email-customer");
 const { sendEmailWithPdf } = require("../utils/mailer");
+const { normalizePhoneForWhatsApp, getAdminWhatsAppNumbers, getSenderWhatsAppNumber, sendWhatsAppMessage, sendWhatsAppToMany } = require("../services/whatsapp");
+const { generateAdminBookingWhatsApp } = require("../templates/wa-template/wa-admin");
+const { generateCustomerBookingWhatsApp } = require("../templates/wa-template/wa-customer");
 
 const ADMIN_EMAILS = process.env.ADMIN_EMAILS.split(",");
 
@@ -58,6 +61,69 @@ const ensureExists = async (Model, id, name) => {
     const doc = await Model.findOne({ _id: id, isDeleted: false }).select("_id");
     if (!doc) return { ok: false, message: `${name} not found` };
     return { ok: true };
+};
+
+// SEND BOOKING
+const sendBookingNotifications = async ({ booking, data, type = "created", adminPdf, customerPdf }) => {
+    const adminWaNumbers = getAdminWhatsAppNumbers();
+    const senderWaNumber = getSenderWhatsAppNumber();
+    const customerWaNumber = normalizePhoneForWhatsApp(booking.phoneNumber);
+
+    const adminHtml = generateAdminBookingEmail(data);
+    const customerHtml = generateBookingEmailCustomer(data);
+
+    const adminWaMessage = generateAdminBookingWhatsApp(data, {
+        type,
+        senderNumber: senderWaNumber,
+    });
+
+    const customerWaMessage = generateCustomerBookingWhatsApp(data, {
+        type,
+        senderNumber: senderWaNumber,
+    });
+
+    const tasks = [
+        sendEmailWithPdf({
+            to: ADMIN_EMAILS,
+            subject: type === "updated" ? "Booking Updated" : "New Booking Received",
+            html: adminHtml,
+            pdfBuffer: adminPdf,
+            filename: `booking-admin-${booking._id}.pdf`,
+        }),
+        sendEmailWithPdf({
+            to: booking.email,
+            subject: type === "updated" ? "Your Booking Status Updated" : "Your Booking Confirmation",
+            html: customerHtml,
+            pdfBuffer: customerPdf,
+            filename: `booking-${booking._id}.pdf`,
+        }),
+    ];
+
+    if (adminWaNumbers.length > 0) {
+        tasks.push(
+            sendWhatsAppToMany({
+                phoneNumbers: adminWaNumbers,
+                message: adminWaMessage,
+            })
+        );
+    }
+
+    if (customerWaNumber) {
+        tasks.push(
+            sendWhatsAppMessage({
+                phoneNo: customerWaNumber,
+                message: customerWaMessage,
+            })
+        );
+    }
+
+    const results = await Promise.allSettled(tasks);
+
+    const failed = results.filter((item) => item.status === "rejected");
+
+    if (failed.length > 0) {
+        console.error("Some notifications failed:", failed.map((item) => item.reason?.message || item.reason));
+    }
 };
 
 // BOOKING CHECK INTERNAL
@@ -396,31 +462,16 @@ const createBooking = async (req, res) => {
 
         const data = formatBookingEmailData(populatedBooking)
 
-        // HTML
-        const adminHtml = generateAdminBookingEmail(data)
-        const customerHtml = generateBookingEmailCustomer(data)
+        const adminPdf = await generatePdfBuffer(generateAdminBookingPdf(data));
+        const customerPdf = await generatePdfBuffer(generateCustomerBookingPdf(data));
 
-        // PDF
-        const adminPdf = await generatePdfBuffer(generateAdminBookingPdf(data))
-        const customerPdf = await generatePdfBuffer(generateCustomerBookingPdf(data))
-
-        // SEND ADMIN
-        await sendEmailWithPdf({
-            to: ADMIN_EMAILS,
-            subject: "New Booking Received",
-            html: adminHtml,
-            pdfBuffer: adminPdf,
-            filename: `booking-admin-${booking._id}.pdf`,
-        })
-
-        // SEND CUSTOMER
-        await sendEmailWithPdf({
-            to: booking.email,
-            subject: "Your Booking Confirmation",
-            html: customerHtml,
-            pdfBuffer: customerPdf,
-            filename: `booking-${booking._id}.pdf`,
-        })
+        await sendBookingNotifications({
+            booking,
+            data,
+            type: "created",
+            adminPdf,
+            customerPdf,
+        });
 
         return formatResponse(res, 201, "Booking created successfully", booking);
     } catch (error) {
@@ -537,28 +588,16 @@ const updateBooking = async (req, res) => {
 
         const data = formatBookingEmailData(populatedBooking)
 
-        // generate ulang email + pdf
-        const adminHtml = generateAdminBookingEmail(data)
-        const customerHtml = generateBookingEmailCustomer(data)
+        const adminPdf = await generatePdfBuffer(generateAdminBookingPdf(data));
+        const customerPdf = await generatePdfBuffer(generateCustomerBookingPdf(data));
 
-        const adminPdf = await generatePdfBuffer(generateAdminBookingPdf(data))
-        const customerPdf = await generatePdfBuffer(generateCustomerBookingPdf(data))
-
-        await sendEmailWithPdf({
-            to: ADMIN_EMAILS,
-            subject: "Booking Updated",
-            html: adminHtml,
-            pdfBuffer: adminPdf,
-            filename: `booking-admin-${booking._id}.pdf`,
-        })
-
-        await sendEmailWithPdf({
-            to: booking.email,
-            subject: "Your Booking Status Updated",
-            html: customerHtml,
-            pdfBuffer: customerPdf,
-            filename: `booking-${booking._id}.pdf`,
-        })
+        await sendBookingNotifications({
+            booking,
+            data,
+            type: "updated",
+            adminPdf,
+            customerPdf,
+        });
 
         return formatResponse(res, 200, "Booking updated successfully", {
             id: booking._id,
