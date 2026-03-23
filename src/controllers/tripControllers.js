@@ -17,16 +17,6 @@ const createTrip = async (req, res) => {
             );
         }
 
-        if (pickupLocation === dropoffLocation) {
-            return formatResponse(
-                res,
-                400,
-                "Pickup and dropoff locations cannot be the same",
-                null,
-                "Invalid request"
-            );
-        }
-
         // Validate pickup location
         const pickup = await Location.findOne({
             _id: pickupLocation,
@@ -165,19 +155,6 @@ const updateTrip = async (req, res) => {
             }
 
             trip.dropoffLocation = dropoffLocation;
-        }
-
-        if (
-            trip.pickupLocation.toString() ===
-            trip.dropoffLocation.toString()
-        ) {
-            return formatResponse(
-                res,
-                400,
-                "Pickup and dropoff locations cannot be the same",
-                null,
-                "Invalid request"
-            );
         }
 
         await trip.save();

@@ -42,33 +42,89 @@ const formatPopularArticles = (articles) =>
  */
 
 const formatSections = (sections = []) => {
-  return sections.map((section) => {
-    const type = section.sys.contentType.sys.id
+  return sections
+    .map((section) => {
+      const type = section.sys.contentType.sys.id
 
-    if (type === "singleColumnSection") {
-      return {
-        type: "single",
-        blocks: formatBlocks(section.fields.blocks),
+      if (type === "singleColumnSection") {
+        return {
+          type: "single",
+          blocks: formatBlocks(section.fields.blocks),
+        }
       }
-    }
 
-    if (type === "doubleColumnSection") {
-      return {
-        type: "double",
-        left: formatBlocks(section.fields.leftColumn),
-        right: formatBlocks(section.fields.rightColumn),
+      if (type === "doubleColumnSection") {
+        return {
+          type: "double",
+          left: formatBlocks(section.fields.leftColumn),
+          right: formatBlocks(section.fields.rightColumn),
+        }
       }
-    }
 
-    return null
-  }).filter(Boolean)
+      // NEW: double row section
+      if (type === "doubleRowSection") {
+        return {
+          type: "double-row",
+          top: formatBlocks(section.fields.topRow),
+          bottom: formatBlocks(section.fields.bottomRow),
+        }
+      }
+
+      return null
+    })
+    .filter(Boolean)
+}
+
+const hasMark = (node, markType) => {
+  return Array.isArray(node?.marks) && node.marks.some((mark) => mark.type === markType)
+}
+
+const getNodeText = (node, trim = true) => {
+  if (!node) return ""
+
+  if (node.nodeType === "text") {
+    const value = node.value || ""
+    return trim ? value.trim() : value
+  }
+
+  const text = (node.content || [])
+    .map((child) => getNodeText(child, false))
+    .join("")
+
+  return trim ? text.trim() : text
+}
+
+// supaya italic jadi block sendiri, bukan nempel di paragraph
+const parseParagraphContent = (node) => {
+  const chunks = []
+
+  for (const child of node.content || []) {
+    const text = getNodeText(child, false)
+    if (!text) continue
+
+    const type = hasMark(child, "italic") ? "italic" : "p"
+    const lastChunk = chunks[chunks.length - 1]
+
+    if (lastChunk && lastChunk.type === type) {
+      lastChunk.text += text
+    } else {
+      chunks.push({ type, text })
+    }
+  }
+
+  return chunks
+    .map((chunk) => ({
+      ...chunk,
+      text: chunk.text.trim(),
+    }))
+    .filter((chunk) => chunk.text)
 }
 
 const parseRichText = (richText) => {
   if (!richText?.content) return []
 
   return richText.content
-    .map((node) => {
+    .flatMap((node) => {
       switch (node.nodeType) {
         case "heading-1":
           return {
@@ -88,28 +144,26 @@ const parseRichText = (richText) => {
             text: getNodeText(node),
           }
 
-        case "paragraph":
-          const text = getNodeText(node)
-          if (!text) return null
+        // NEW: heading-4
+        case "heading-4":
           return {
-            type: "p",
-            text,
+            type: "h4",
+            text: getNodeText(node),
           }
+
+        case "paragraph":
+          return parseParagraphContent(node)
 
         case "unordered-list":
           return {
             type: "ul",
-            items: node.content.map((li) =>
-              getNodeText(li.content[0])
-            ),
+            items: node.content.map((li) => getNodeText(li)),
           }
 
         case "ordered-list":
           return {
             type: "ol",
-            items: node.content.map((li) =>
-              getNodeText(li.content[0])
-            ),
+            items: node.content.map((li) => getNodeText(li)),
           }
 
         default:
@@ -117,15 +171,6 @@ const parseRichText = (richText) => {
       }
     })
     .filter(Boolean)
-}
-
-const getNodeText = (node) => {
-  if (!node?.content) return ""
-
-  return node.content
-    .map((child) => child.value || "")
-    .join("")
-    .trim()
 }
 
 const formatBlocks = (blocks = []) => {
@@ -165,7 +210,6 @@ const formatArticleDetail = (article) => ({
   createdAt: article.sys.createdAt,
   sections: formatSections(article.fields.sections),
 
-  // ✅ tambahin ini
   footer: {
     title: article.fields.footerTitle || null,
     description: article.fields.footerDescription || null,

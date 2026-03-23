@@ -29,14 +29,27 @@ const toNumber = (val, def = 0) => {
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
-const isNightSurcharge = (dateValue) => {
-    if (!dateValue) return false;
-    const d = new Date(dateValue);
-    if (Number.isNaN(d.getTime())) return false;
+const getPickupTimeSurcharge = (dateValue) => {
+    if (!dateValue) return 0;
 
-    // assumes server & FE use consistent timezone
+    const d = new Date(dateValue);
+    if (Number.isNaN(d.getTime())) return 0;
+
     const hour = d.getHours();
-    return hour >= 0 && hour < 6; // 00:00 - 05:59
+
+    if (hour === 22) return 15;
+    if (hour === 23) return 20;
+    if (hour >= 0 && hour <= 5) return 25;
+
+    return 0;
+};
+
+const getAdditionalPassengerCharge = (passengers) => {
+    const totalPassengers = toNumber(passengers, 0);
+
+    if (totalPassengers <= 4) return 0;
+
+    return (totalPassengers - 4) * 5;
 };
 
 const applyPromoDiscount = (total, promo) => {
@@ -265,14 +278,20 @@ const checkBookingPriceInternal = async (clientInputRaw) => {
             throw new Error("Pricing not found for this trip and vehicle");
         }
 
-        const basePrice = Number(pricing.price);
-        const NIGHT_SURCHARGE_FLAT = 25;
+        const basePrice = Number(pricing.price || 0);
+        const additionalPassengerCharge = getAdditionalPassengerCharge(passengers);
 
-        totalPrice = roundTrip ? basePrice * 2 : basePrice;
+        // harga per 1 perjalanan
+        const oneWayPrice = basePrice + additionalPassengerCharge;
 
-        if (isNightSurcharge(pickupDateOut)) totalPrice += NIGHT_SURCHARGE_FLAT;
-        if (roundTrip && isNightSurcharge(pickupDateReturn)) {
-            totalPrice += NIGHT_SURCHARGE_FLAT;
+        totalPrice = roundTrip ? oneWayPrice * 2 : oneWayPrice;
+
+        // surcharge pickupDateOut
+        totalPrice += getPickupTimeSurcharge(pickupDateOut);
+
+        // surcharge pickupDateReturn hanya saat roundTrip
+        if (roundTrip) {
+            totalPrice += getPickupTimeSurcharge(pickupDateReturn);
         }
 
         if (promoCode) {

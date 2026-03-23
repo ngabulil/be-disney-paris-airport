@@ -2,6 +2,7 @@ const express = require("express");
 const app = express();
 const env = require("dotenv");
 const cors = require("cors");
+const path = require("path");
 const connectDB = require("./config/db");
 
 const adminRoutes = require("./routes/adminRoutes");
@@ -18,8 +19,12 @@ const bookingRoutes = require("./routes/bookingRoutes");
 
 env.config();
 
-app.use(express.json());
 app.use(cors());
+app.use(express.json());
+
+// semua file dalam folder public bisa diakses bebas
+app.use("/public", express.static(path.join(__dirname, "../public")));
+
 app.use("/api/admin", adminRoutes);
 app.use("/api/hotel", hotelRoutes);
 app.use("/api/terminal", terminalRoutes);
