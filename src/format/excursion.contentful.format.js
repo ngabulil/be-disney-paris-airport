@@ -4,6 +4,7 @@ const formatExcursionTripList = (item) => {
     title: item.fields.title,
     slug: item.fields.slug,
     heroImage: item.fields.heroImage?.fields?.file?.url || null,
+    summary: item.fields.summary
   }
 }
 
