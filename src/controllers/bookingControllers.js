@@ -47,9 +47,9 @@ const getPickupTimeSurcharge = (dateValue) => {
 const getAdditionalPassengerCharge = (passengers) => {
     const totalPassengers = toNumber(passengers, 0);
 
-    if (totalPassengers <= 4) return 0;
+    if (totalPassengers <= 3) return 0;
 
-    return (totalPassengers - 4) * 5;
+    return (totalPassengers - 3) * 5;
 };
 
 const applyPromoDiscount = (total, promo) => {
