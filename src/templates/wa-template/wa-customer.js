@@ -58,7 +58,7 @@ ${intro}
 *Amount:* ${value(data.totalPrice)}
 
 _Payment will be made upon arrival at your destination._
-${senderNumber ? `_Sender: ${senderNumber}_` : ""}`;
+Disney Paris Airport Transfer Team`;
 };
 
 module.exports = {

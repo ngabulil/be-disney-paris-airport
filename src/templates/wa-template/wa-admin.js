@@ -58,7 +58,7 @@ const generateAdminBookingWhatsApp = (data, options = {}) => {
 *Method:* ${value(data.paymentMethod)}
 *Amount:* ${value(data.totalPrice)}
 
-${senderNumber ? `_Sender: ${senderNumber}_` : ""}`;
+Disney Paris Airport Transfer Team`;
 };
 
 module.exports = {
