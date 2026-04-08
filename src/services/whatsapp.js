@@ -9,21 +9,23 @@ const getAdminWhatsAppNumbers = () => {
         .filter(Boolean);
 };
 
-const getSenderWhatsAppNumber = () => {
-    return normalizePhoneForWhatsApp(process.env.SENDER_NUMBER_WA || "");
+const getSenderWhatsAppNumber = (waNumber) => {
+    return normalizePhoneForWhatsApp(
+        waNumber || process.env.SENDER_NUMBER_WA || ""
+    );
 };
 
-const sendWhatsAppMessage = async ({ phoneNo, message }) => {
+const sendWhatsAppMessage = async ({ phoneNo, message, numberKey }) => {
     const apiKey = process.env.API_KEY_WA;
-    const numberKey = process.env.NUMBER_KEY_WA;
     const baseUrl = process.env.BASE_URL_WA || "https://api.watzap.id/v1/";
+    const selectedNumberKey = numberKey;
 
     if (!apiKey) {
         throw new Error("API_KEY_WA is not configured");
     }
 
-    if (!numberKey) {
-        throw new Error("NUMBER_KEY_WA is not configured");
+    if (!selectedNumberKey) {
+        throw new Error("numberKey WhatsApp is not configured");
     }
 
     const normalizedPhone = normalizePhoneForWhatsApp(phoneNo);
@@ -39,7 +41,7 @@ const sendWhatsAppMessage = async ({ phoneNo, message }) => {
         },
         body: JSON.stringify({
             api_key: apiKey,
-            number_key: numberKey,
+            number_key: selectedNumberKey,
             phone_no: normalizedPhone,
             message,
         }),
@@ -62,14 +64,17 @@ const sendWhatsAppMessage = async ({ phoneNo, message }) => {
     return result;
 };
 
-const sendWhatsAppToMany = async ({ phoneNumbers = [], message }) => {
-    const uniqueNumbers = [...new Set(phoneNumbers.map(normalizePhoneForWhatsApp).filter(Boolean))];
+const sendWhatsAppToMany = async ({ phoneNumbers = [], message, numberKey }) => {
+    const uniqueNumbers = [
+        ...new Set(phoneNumbers.map(normalizePhoneForWhatsApp).filter(Boolean)),
+    ];
 
     const results = await Promise.allSettled(
         uniqueNumbers.map((phoneNo) =>
             sendWhatsAppMessage({
                 phoneNo,
                 message,
+                numberKey,
             })
         )
     );

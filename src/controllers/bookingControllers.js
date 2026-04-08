@@ -77,10 +77,17 @@ const ensureExists = async (Model, id, name) => {
 };
 
 // SEND BOOKING
-const sendBookingNotifications = async ({ booking, data, type = "created", adminPdf, customerPdf }) => {
+const sendBookingNotifications = async ({
+    booking,
+    data,
+    type = "created",
+    adminPdf,
+    customerPdf,
+}) => {
     const adminWaNumbers = getAdminWhatsAppNumbers();
     const senderWaNumber = getSenderWhatsAppNumber();
     const customerWaNumber = normalizePhoneForWhatsApp(booking.phoneNumber);
+    const firstAdminWaNumber = adminWaNumbers[0];
 
     const adminHtml = generateAdminBookingEmail(data);
     const customerHtml = generateBookingEmailCustomer(data);
@@ -112,20 +119,24 @@ const sendBookingNotifications = async ({ booking, data, type = "created", admin
         }),
     ];
 
-    if (adminWaNumbers.length > 0) {
+    // kirim ke admin nomor pertama pakai key ke-2
+    if (firstAdminWaNumber) {
         tasks.push(
-            sendWhatsAppToMany({
-                phoneNumbers: adminWaNumbers,
+            sendWhatsAppMessage({
+                phoneNo: firstAdminWaNumber,
                 message: adminWaMessage,
+                numberKey: process.env.NUMBER_KEY_WA_2,
             })
         );
     }
 
+    // kirim ke customer pakai key ke-1
     if (customerWaNumber) {
         tasks.push(
             sendWhatsAppMessage({
                 phoneNo: customerWaNumber,
                 message: customerWaMessage,
+                numberKey: process.env.NUMBER_KEY_WA_1,
             })
         );
     }
@@ -135,7 +146,10 @@ const sendBookingNotifications = async ({ booking, data, type = "created", admin
     const failed = results.filter((item) => item.status === "rejected");
 
     if (failed.length > 0) {
-        console.error("Some notifications failed:", failed.map((item) => item.reason?.message || item.reason));
+        console.error(
+            "Some notifications failed:",
+            failed.map((item) => item.reason?.message || item.reason)
+        );
     }
 };
 
