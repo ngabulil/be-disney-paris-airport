@@ -8,6 +8,7 @@ const Vehicle = require("../models/vehicle.model");
 const Trip = require("../models/trip.model");
 const PricingVehicle = require("../models/pricingVehicle.model");
 const Promo = require("../models/promo.model");
+const Wa = require("../models/wa.model");
 const { formatBookingEmailData } = require("../format/bookingFormat");
 const { generateAdminBookingPdf } = require("../templates/pdf-template/pdf-admin");
 const { generatePdfBuffer } = require("../utils/pdfGenerator");
@@ -89,6 +90,14 @@ const sendBookingNotifications = async ({
     const customerWaNumber = normalizePhoneForWhatsApp(booking.phoneNumber);
     const firstAdminWaNumber = adminWaNumbers[0];
 
+    const waKeyData = await Wa.findOne({}).lean();
+
+    if (!waKeyData || !waKeyData.keyNumberBusiness) {
+        throw new Error("WA business key not found in database");
+    }
+
+    const businessWaKey = waKeyData.keyNumberBusiness;
+
     const adminHtml = generateAdminBookingEmail(data);
     const customerHtml = generateBookingEmailCustomer(data);
 
@@ -119,24 +128,24 @@ const sendBookingNotifications = async ({
         }),
     ];
 
-    // kirim ke admin nomor pertama pakai key ke-2
+    // kirim ke admin nomor pertama pakai key business dari database
     if (firstAdminWaNumber) {
         tasks.push(
             sendWhatsAppMessage({
                 phoneNo: firstAdminWaNumber,
                 message: adminWaMessage,
-                numberKey: process.env.NUMBER_KEY_WA_2,
+                numberKey: businessWaKey,
             })
         );
     }
 
-    // kirim ke customer pakai key ke-1
+    // kirim ke customer pakai key business dari database
     if (customerWaNumber) {
         tasks.push(
             sendWhatsAppMessage({
                 phoneNo: customerWaNumber,
                 message: customerWaMessage,
-                numberKey: process.env.NUMBER_KEY_WA_1,
+                numberKey: businessWaKey,
             })
         );
     }

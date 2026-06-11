@@ -16,6 +16,7 @@ const terminalRoutes = require("./routes/terminalRoutes");
 const promoRoutes = require("./routes/promoRoutes");
 const excursionRoutes = require("./routes/excursionRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
+const waRoutes = require("./routes/waRoutes");
 
 env.config();
 
@@ -36,6 +37,7 @@ app.use("/api/article", articleRoutes);
 app.use("/api/promo", promoRoutes);
 app.use("/api/excursion", excursionRoutes);
 app.use("/api/booking", bookingRoutes);
+app.use("/api/wa", waRoutes);
 
 connectDB()
   .then(() => {
