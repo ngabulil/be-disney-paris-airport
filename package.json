@@ -1,0 +1,32 @@
+{
+  "name": "paris-be",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^7.3.9",
+    "@whiskeysockets/baileys": "^7.0.0-rc13",
+    "bcryptjs": "^3.0.3",
+    "contentful": "^11.10.5",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "ioredis": "^5.4.2",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.2.1",
+    "nodemailer": "^8.0.3",
+    "pino": "^9.5.0",
+    "puppeteer": "^24.39.1",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
