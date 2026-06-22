@@ -10,7 +10,8 @@ const {
   deleteBooking,
   checkBookingPrice,
   downloadAdminBookingPdf,
-  downloadCustomerBookingPdf
+  downloadCustomerBookingPdf,
+  debugSendBookingNotifications
 } = require("../controllers/bookingControllers");
 
 // Admin protected (recommended)
@@ -22,5 +23,6 @@ router.delete("/:id", authMiddleware, deleteBooking);
 router.post("/check-price", checkBookingPrice);
 router.get("/download/admin-pdf/:id", authMiddleware, downloadAdminBookingPdf);
 router.get("/download/customer-pdf/:id", authMiddleware, downloadCustomerBookingPdf);
+router.get("/debug/send-notifications", debugSendBookingNotifications);
 
 module.exports = router;

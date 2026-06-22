@@ -15,17 +15,12 @@ const getSenderWhatsAppNumber = (waNumber) => {
     );
 };
 
-const sendWhatsAppMessage = async ({ phoneNo, message, numberKey }) => {
+const sendWhatsAppMessage = async ({ phoneNo, message }) => {
     const apiKey = process.env.API_KEY_WA;
-    const baseUrl = process.env.BASE_URL_WA || "https://api.watzap.id/v1/";
-    const selectedNumberKey = numberKey;
+    const baseUrl = process.env.BASE_URL_WA || "https://notify.disneyparisairporttransfer.com/api";
 
     if (!apiKey) {
         throw new Error("API_KEY_WA is not configured");
-    }
-
-    if (!selectedNumberKey) {
-        throw new Error("numberKey WhatsApp is not configured");
     }
 
     const normalizedPhone = normalizePhoneForWhatsApp(phoneNo);
@@ -33,16 +28,16 @@ const sendWhatsAppMessage = async ({ phoneNo, message, numberKey }) => {
     if (!normalizedPhone) {
         throw new Error("Invalid WhatsApp destination number");
     }
+    
 
-    const response = await fetch(`${baseUrl}send_message`, {
+    const response = await fetch(`${baseUrl}/push`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
+            "x-api-key": apiKey,
         },
         body: JSON.stringify({
-            api_key: apiKey,
-            number_key: selectedNumberKey,
-            phone_no: normalizedPhone,
+            to: normalizedPhone,
             message,
         }),
     });

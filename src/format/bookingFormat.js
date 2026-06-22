@@ -1,102 +1,234 @@
-const formatDate = (date) => {
-  if (!date) return "-";
-  const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return "-";
-
-  return d.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+const value = (v, fallback = "-") => {
+  if (v === undefined || v === null || v === "" || v === "-") return fallback;
+  return v;
 };
 
-const formatTime = (date) => {
-  if (!date) return "-";
-  const d = new Date(date);
+const isFilled = (v) => {
+  return v !== undefined && v !== null && v !== "" && v !== "-";
+};
+
+const toNumber = (v) => {
+  const n = Number(v || 0);
+  return Number.isNaN(n) ? 0 : n;
+};
+
+const titleCase = (text) => {
+  if (!isFilled(text)) return "-";
+
+  return String(text)
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const yesNo = (value) => {
+  return value ? "Yes" : "No";
+};
+
+const plural = (count, singular, pluralText = `${singular}s`) => {
+  const n = toNumber(count);
+  return `${n} ${n > 1 ? pluralText : singular}`;
+};
+
+const formatWaDateTime = (dateValue) => {
+  if (!dateValue) return "-";
+
+  const d = new Date(dateValue);
   if (Number.isNaN(d.getTime())) return "-";
 
-  return d.toLocaleTimeString("en-GB", {
+  const date = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Paris",
+  }).format(d);
+
+  const time = new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
+    timeZone: "Europe/Paris",
+  }).format(d);
+
+  return `${date} at ${time}`;
+};
+
+const formatTerminal = (terminal) => {
+  if (!isFilled(terminal)) return "";
+
+  const text = String(terminal).trim();
+
+  if (/terminal/i.test(text)) return text;
+
+  return `Terminal ${text}`;
+};
+
+const formatAirportDetail = ({ terminal, flightNumber }) => {
+  const details = [];
+
+  if (isFilled(terminal)) {
+    details.push(formatTerminal(terminal));
+  }
+
+  if (isFilled(flightNumber)) {
+    details.push(`Flight ${flightNumber}`);
+  }
+
+  return details.length ? ` (${details.join(" – ")})` : "";
+};
+
+const formatPickupPlace = (data) => {
+  const base =
+    value(data.pickupHotel, "") ||
+    value(data.pickupAddress, "") ||
+    value(data.pickupLocation, "");
+
+  const airportDetail = formatAirportDetail({
+    terminal: data.pickupTerminal,
+    flightNumber: data.pickupFlightNumber,
   });
+
+  return `${base || "-"}${airportDetail}`;
 };
 
-const formatCurrency = (amount) => {
-  if (amount === undefined || amount === null) return "-";
-  return `€${Number(amount).toFixed(2)}`;
+const formatDropoffPlace = (data) => {
+  const base =
+    value(data.dropoffHotel, "") ||
+    value(data.dropoffAddress, "") ||
+    value(data.dropoffLocation, "");
+
+  const airportDetail = formatAirportDetail({
+    terminal: data.dropoffTerminal,
+    flightNumber: data.dropoffFlightNumber,
+  });
+
+  return `${base || "-"}${airportDetail}`;
 };
 
-const formatBookingEmailData = (booking) => {
-  return {
-    bookingId: booking._id?.toString() || "-",
-    receivedDate: formatDate(booking.createdAt),
-    createdAt: booking.createdAt ? new Date(booking.createdAt).toISOString() : "-",
-    updatedAt: booking.updatedAt ? new Date(booking.updatedAt).toISOString() : "-",
+const formatSimplePickupPlace = (data) => {
+  return (
+    value(data.pickupHotel, "") ||
+    value(data.pickupAddress, "") ||
+    value(data.pickupLocation, "-")
+  );
+};
 
-    fullName: booking.fullName || "-",
-    email: booking.email || "-",
-    phoneNumber: booking.phoneNumber || "-",
+const formatSimpleDropoffPlace = (data) => {
+  return (
+    value(data.dropoffHotel, "") ||
+    value(data.dropoffAddress, "") ||
+    value(data.dropoffLocation, "-")
+  );
+};
 
-    pickupLocation: booking.pickupLocation?.name || "-",
-    pickupLocationType: booking.pickupLocation?.locationType || "-",
-    dropoffLocation: booking.dropoffLocation?.name || "-",
-    dropoffLocationType: booking.dropoffLocation?.locationType || "-",
+const formatPassengers = (data) => {
+  const passengers = toNumber(data.passengers);
 
-    pickupHotel: booking.pickupHotel?.name || "-",
-    dropoffHotel: booking.dropoffHotel?.name || "-",
+  const seats = [
+    toNumber(data.childSeats) > 0 ? plural(data.childSeats, "child seat") : "",
+    toNumber(data.babySeats) > 0 ? plural(data.babySeats, "baby seat") : "",
+    toNumber(data.boosterSeats) > 0 ? plural(data.boosterSeats, "booster seat") : "",
+  ].filter(Boolean);
 
-    pickupTerminal: booking.pickupTerminal?.name || "-",
-    pickupTerminalLocation: booking.pickupTerminal?.location || "-",
-    dropoffTerminal: booking.dropoffTerminal?.name || "-",
-    dropoffTerminalLocation: booking.dropoffTerminal?.location || "-",
+  if (!seats.length) {
+    return String(passengers);
+  }
 
-    pickupFlightNumber: booking.pickupFlightNumber || "-",
-    dropoffFlightNumber: booking.dropoffFlightNumber || "-",
+  return `${passengers} (including ${seats.join(", ")})`;
+};
 
-    pickupAddress: booking.pickupAddress || "-",
-    dropoffAddress: booking.dropoffAddress || "-",
+const formatBaggage = (data) => {
+  const items = [
+    toNumber(data.suitcases) > 0 ? plural(data.suitcases, "suitcase") : "",
+    toNumber(data.handLuggage) > 0
+      ? plural(data.handLuggage, "hand luggage", "hand luggage")
+      : "",
+  ].filter(Boolean);
 
-    vehicle: booking.vehicleId?.name || "-",
-    vehicleBookingType: booking.vehicleId?.bookingType || "-",
-    vehicleType: booking.vehicleId?.vehicleType || "-",
-    vehicleMaxPassenger: booking.vehicleId?.maxPassenger ?? "-",
-    vehicleMaxUnit: booking.vehicleId?.maxUnit ?? "-",
-    vehicleMaxStroller: booking.vehicleId?.maxStroller ?? "-",
+  return items.length ? items.join(", ") : "0";
+};
 
-    roundtrip: Boolean(booking.roundtrip),
-    passengers: booking.passengers ?? 0,
-    suitcases: booking.suitcases ?? 0,
-    handLuggage: booking.handLuggage ?? 0,
-    strollers: booking.strollers ?? 0,
-    babySeats: booking.babySeats ?? 0,
-    boosterSeats: booking.boosterSeats ?? 0,
-    childSeats: booking.childSeats ?? 0,
+const formatVehicle = (data) => {
+  const vehicleName = value(data.vehicle, "");
+  const vehicleType = value(data.vehicleBookingType, "") || value(data.vehicleType, "");
 
-    pickupDateOut: booking.pickupDateOut || null,
-    pickupDateOutFormatted: formatDate(booking.pickupDateOut),
-    pickupTimeOutFormatted: formatTime(booking.pickupDateOut),
+  if (vehicleName && vehicleType) {
+    return `${vehicleName}– ${vehicleType}`;
+  }
 
-    pickupDateReturn: booking.pickupDateReturn || null,
-    pickupDateReturnFormatted: formatDate(booking.pickupDateReturn),
-    pickupTimeReturnFormatted: formatTime(booking.pickupDateReturn),
+  return vehicleName || vehicleType || "-";
+};
 
-    totalPrice: formatCurrency(booking.totalPrice),
-    totalPriceRaw: booking.totalPrice ?? 0,
+const formatPrice = (data) => {
+  if (data.totalPriceRaw !== undefined && data.totalPriceRaw !== null) {
+    return `${Number(data.totalPriceRaw)}€`;
+  }
 
-    statusTrip: booking.statusTrip || "-",
-    statusPayment: Boolean(booking.statusPayment),
-    paymentMethod: booking.paymentMethod || "-",
+  if (isFilled(data.totalPrice)) {
+    return String(data.totalPrice).replace("€", "") + "€";
+  }
 
-    isDeleted: Boolean(booking.isDeleted),
-    deletedAt: booking.deletedAt ? new Date(booking.deletedAt).toISOString() : "-",
+  return "-";
+};
 
-    from: booking.pickupLocation?.name || "-",
-    to: booking.dropoffLocation?.name || "-",
+const isBusinessClass = (data) => {
+  if (typeof data.businessClass === "boolean") return data.businessClass;
 
-    notes: booking.notes || "-",
-  };
+  // Kalau belum ada field khusus businessClass di model, default No.
+  return false;
+};
+
+const generateCustomerBookingWhatsApp = (data, options = {}) => {
+  const { type = "created" } = options;
+
+  const intro =
+    type === "updated"
+      ? "Your booking details have been updated!"
+      : "Thank you for your booking!";
+
+  const transferTitle =
+    type === "updated"
+      ? "Please find your updated transfer details:"
+      : "We are pleased to confirm your transfers:";
+
+  const isRoundTrip = Boolean(data.roundtrip);
+
+  const returnBlock = isRoundTrip
+    ? `
+
+📅 ${formatWaDateTime(data.pickupDateReturn)}
+🏨 Pickup: ${formatSimpleDropoffPlace(data)} → ${formatSimplePickupPlace(data)}`
+    : "";
+
+  return `Hello ${value(data.fullName)} 😊
+
+${intro}
+
+${transferTitle}
+
+📅 ${formatWaDateTime(data.pickupDateOut)}
+📍 Pickup: ${formatPickupPlace(data)}
+🏨 Drop-off: ${formatDropoffPlace(data)}
+👥 Passengers: ${formatPassengers(data)}
+🧳 Baggage: ${formatBaggage(data)}
+🚼 Stroller: ${toNumber(data.strollers)}
+🚐 Vehicle: ${formatVehicle(data)}${returnBlock}
+
+💶 Price: ${formatPrice(data)}
+💳 Payment: ${titleCase(data.paymentMethod)}
+✨ Business Class: ${yesNo(isBusinessClass(data))}
+🔁 Round trip: ${yesNo(isRoundTrip)}
+
+Your driver will be waiting for you in the arrival area after landing${
+    isRoundTrip ? " and at the hotel reception for your return" : ""
+  }.
+
+Please confirm that all details are correct ✅
+
+Kind regards,
+Priya
+Disney Paris Airport Transfer 🚐`;
 };
 
 module.exports = {
-  formatBookingEmailData,
+  generateCustomerBookingWhatsApp,
 };

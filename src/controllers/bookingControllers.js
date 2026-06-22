@@ -743,6 +743,122 @@ const downloadCustomerBookingPdf = async (req, res) => {
     }
 }
 
+const buildDummyBookingNotificationData = (body = {}) => {
+    const pickupDateOut = body.pickupDateOut || "2026-06-08T12:00:00+02:00";
+    const pickupDateReturn = body.pickupDateReturn || "2026-06-11T12:45:00+02:00";
+    const totalPriceRaw = body.totalPriceRaw ?? 160;
+
+    return {
+        bookingId: `DUMMY-${Date.now()}`,
+        receivedDate: "08 Jun 2026",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+
+        fullName: body.fullName || "Joseph",
+        email: "firman19ramadhan@gmail.com",
+        phoneNumber: "6282211022160",
+
+        pickupLocation: "Charles de Gaulle Airport",
+        pickupLocationType: "airport",
+        dropoffLocation: "Disneyland Hotel",
+        dropoffLocationType: "hotel",
+
+        pickupHotel: "-",
+        dropoffHotel: "Disneyland Hotel",
+
+        pickupTerminal: "2C",
+        pickupTerminalLocation: "Charles de Gaulle Airport",
+        dropoffTerminal: "-",
+        dropoffTerminalLocation: "-",
+
+        pickupFlightNumber: "BA0302",
+        dropoffFlightNumber: "-",
+
+        pickupAddress: "-",
+        dropoffAddress: "-",
+
+        vehicle: "Mercedes Benz",
+        vehicleBookingType: "business",
+        vehicleType: "business",
+        vehicleMaxPassenger: 3,
+        vehicleMaxUnit: 4,
+        vehicleMaxStroller: 1,
+
+        roundtrip: true,
+        passengers: 3,
+        suitcases: 1,
+        handLuggage: 3,
+        strollers: 1,
+        babySeats: 0,
+        boosterSeats: 0,
+        childSeats: 1,
+
+        pickupDateOut,
+        pickupDateOutFormatted: "08 Jun 2026",
+        pickupTimeOutFormatted: "12:00",
+
+        pickupDateReturn,
+        pickupDateReturnFormatted: "11 Jun 2026",
+        pickupTimeReturnFormatted: "12:45",
+
+        totalPrice: `€${Number(totalPriceRaw).toFixed(2)}`,
+        totalPriceRaw,
+
+        statusTrip: "confirmed",
+        statusPayment: false,
+        paymentMethod: "card",
+
+        isDeleted: false,
+        deletedAt: "-",
+
+        from: "Charles de Gaulle Airport",
+        to: "Disneyland Hotel",
+
+        notes: "-",
+    };
+};
+
+const debugSendBookingNotifications = async (req, res) => {
+    try {
+        if (process.env.NODE_ENV === "production") {
+            return formatResponse(
+                res,
+                403,
+                "Debug notification endpoint is disabled in production",
+                null,
+                "Forbidden"
+            );
+        }
+
+        const data = buildDummyBookingNotificationData(req.body || {});
+
+        const dummyBooking = {
+            _id: data.bookingId,
+            email: data.email,
+            phoneNumber: data.phoneNumber,
+        };
+
+        const adminPdf = await generatePdfBuffer(generateAdminBookingPdf(data));
+        const customerPdf = await generatePdfBuffer(generateCustomerBookingPdf(data));
+
+        await sendBookingNotifications({
+            booking: dummyBooking,
+            data,
+            type: req.body?.type || "created",
+            adminPdf,
+            customerPdf,
+        });
+
+        return formatResponse(res, 200, "Dummy booking notification sent successfully", {
+            toEmail: data.email,
+            toWhatsApp: data.phoneNumber,
+            type: req.body?.type || "created",
+        });
+    } catch (error) {
+        return formatResponse(res, 500, "Failed send dummy booking notification", null, error.message);
+    }
+};
+
 module.exports = {
     createBooking,
     getAllBookings,
@@ -751,5 +867,6 @@ module.exports = {
     deleteBooking,
     checkBookingPrice,
     downloadAdminBookingPdf,
-    downloadCustomerBookingPdf
+    downloadCustomerBookingPdf,
+    debugSendBookingNotifications,
 };
