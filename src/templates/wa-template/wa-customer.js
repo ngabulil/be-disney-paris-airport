@@ -1,3 +1,5 @@
+// ===== Helper Functions =====
+
 const value = (v, fallback = "-") => {
   if (v === undefined || v === null || v === "") return fallback;
   return v;
@@ -27,97 +29,71 @@ const boolValue = (v) => {
   return v === true || v === "true" || v === "yes" || v === 1 || v === "1";
 };
 
-const yesNo = (v) => {
-  return boolValue(v) ? "Yes" : "No";
-};
-
 const titleCase = (text) => {
   if (!text) return "-";
   return String(text).charAt(0).toUpperCase() + String(text).slice(1);
 };
 
-const formatDateTime = (dateValue) => {
+const formatDate = (dateValue) => {
   if (!dateValue) return "-";
-
   const d = new Date(dateValue);
-
-  if (Number.isNaN(d.getTime())) {
-    return String(dateValue);
-  }
-
-  const date = new Intl.DateTimeFormat("en-GB", {
+  if (Number.isNaN(d.getTime())) return String(dateValue);
+  return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "long",
     year: "numeric",
     timeZone: "Europe/Paris",
   }).format(d);
+};
 
-  const time = new Intl.DateTimeFormat("en-GB", {
+const formatTime = (dateValue) => {
+  if (!dateValue) return "-";
+  const d = new Date(dateValue);
+  if (Number.isNaN(d.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
     timeZone: "Europe/Paris",
   }).format(d);
-
-  return `${date} at ${time}`;
 };
 
 const formatPrice = (price) => {
   if (price === undefined || price === null || price === "") return "-";
-
   const text = String(price);
-
   if (text.includes("€")) return text;
-
   return `${text}€`;
 };
 
 const formatTerminal = (terminal) => {
   const terminalName = getName(terminal);
-
   if (!terminalName) return "";
-
   if (/terminal/i.test(terminalName)) return terminalName;
-
   return `Terminal ${terminalName}`;
 };
 
-const composePlace = ({ location, hotel, terminal, flightNumber, address }) => {
+// Nama tempat (hotel/alamat/lokasi) + terminal jika ada, dipakai untuk Pickup/Drop-off
+const composePlace = ({ location, hotel, terminal, address }) => {
   const locationName = getName(location);
   const hotelName = getName(hotel);
   const addressText = value(address, "");
   const terminalText = formatTerminal(terminal);
 
-  const base = hotelName || addressText || locationName;
+  const base = hotelName || addressText || locationName || "-";
 
-  const extras = [];
-
-  if (terminalText) extras.push(terminalText);
-  if (flightNumber) extras.push(`Flight ${flightNumber}`);
-
-  if (extras.length) {
-    return `${base} (${extras.join(" – ")})`;
-  }
-
-  return base || "-";
+  return terminalText ? `${base} (${terminalText})` : base;
 };
 
-const composeSimplePlace = ({ location, hotel, address }) => {
-  return getName(hotel) || value(address, "") || getName(location) || "-";
-};
-
-const formatPassengers = (data) => {
-  const passengers = value(data.passengers);
-
+const formatSeatsOnly = (data) => {
   const seats = [
     toNumber(data.childSeats) > 0 ? plural(data.childSeats, "child seat") : "",
     toNumber(data.babySeats) > 0 ? plural(data.babySeats, "baby seat") : "",
-    toNumber(data.boosterSeats) > 0 ? plural(data.boosterSeats, "booster seat") : "",
+    toNumber(data.boosterSeats) > 0
+      ? plural(data.boosterSeats, "booster seat")
+      : "",
   ].filter(Boolean);
 
-  if (!seats.length) return passengers;
-
-  return `${passengers} (including ${seats.join(", ")})`;
+  return seats.length ? seats.join(", ") : "0";
 };
 
 const formatBaggage = (data) => {
@@ -131,41 +107,37 @@ const formatBaggage = (data) => {
   return items.length ? items.join(", ") : "0";
 };
 
-const formatVehicle = (data) => {
-  const vehicleName = pick(
-    data.vehicleName,
-    getName(data.vehicle),
-    getName(data.vehicleId)
-  );
+const BUSINESS_FEATURES = [
+  "Starlight ceiling",
+  "TV with Disney movies",
+  "Luxury leather seats",
+  "Air conditioning",
+];
 
-  const vehicleType = pick(
-    data.vehicleType,
-    data.bookingType,
-    data.vehicleId?.vehicleType,
-    data.vehicleId?.bookingType
-  );
+const businessFeaturesBlock = () =>
+  BUSINESS_FEATURES.map((f) => `• ${f}`).join("\n");
 
-  return [vehicleName, vehicleType].filter(Boolean).join(" – ") || "-";
-};
-
+// ===== Template Builder =====
+// Menghasilkan salah satu dari 4 varian:
+// 1. One way - No business
+// 2. One way - Business
+// 3. 2 ways - No business
+// 4. 2 ways - Business
 const generateCustomerBookingWhatsApp = (data, options = {}) => {
   const { type = "created" } = options;
 
+  const isRoundTrip = boolValue(data.roundtrip || data.roundTrip);
+  const isBusiness = boolValue(data.businessClass);
+
   const intro =
     type === "updated"
-      ? "Your booking details have been updated!"
-      : "Thank you for your booking!";
-
-  const confirmText =
-    type === "updated"
-      ? "Please find your updated transfer details:"
-      : "We are pleased to confirm your transfers:";
+      ? "Your booking details have been updated! Please find your updated transfer details below."
+      : "Thank you for your booking with Disney Paris Airport Transfer.";
 
   const pickupSide = {
     location: data.pickupLocation,
     hotel: data.pickupHotel,
     terminal: data.pickupTerminal,
-    flightNumber: data.pickupFlightNumber,
     address: data.pickupAddress,
   };
 
@@ -173,55 +145,142 @@ const generateCustomerBookingWhatsApp = (data, options = {}) => {
     location: data.dropoffLocation,
     hotel: data.dropoffHotel,
     terminal: data.dropoffTerminal,
-    flightNumber: data.dropoffFlightNumber,
     address: data.dropoffAddress,
   };
 
-  const outboundPickup = composePlace(pickupSide);
-  const outboundDropoff = composePlace(dropoffSide);
+  const vehicleLabel = isBusiness
+    ? "Mercedes-Benz Business Class Vehicle"
+    : "Economy Class";
 
-  const returnPickup = composeSimplePlace(dropoffSide);
-  const returnDropoff = composeSimplePlace(pickupSide);
+  const vehicleBlock = isBusiness
+    ? `*Vehicle:* ${vehicleLabel}\n\n${businessFeaturesBlock()}`
+    : `*Vehicle:* ${vehicleLabel}`;
 
-  const isRoundTrip = boolValue(data.roundtrip || data.roundTrip);
+  const flightOrTrain = pick(
+    data.flightNumber,
+    data.trainNumber,
+    data.pickupFlightNumber,
+    data.dropoffFlightNumber,
+    "-"
+  );
 
-  return `Hello ${value(data.fullName)} 😊
+  const passengerBlock = `*Passengers:* ${value(
+    data.passengers
+  )}\n*Luggage:* ${formatBaggage(data)}\n*Child Seats:* ${formatSeatsOnly(
+    data
+  )}`;
+
+  const driverNote =
+    "For your arrival, your driver will be waiting inside the arrivals hall with a name board displaying your name.";
+
+  const confirmAsk = "Could you kindly confirm that all details above are correct?";
+
+  const closing = `Kind regards,\n\nPriya\nDisney Paris Airport Transfer`;
+
+  // ----- ONE WAY -----
+  if (!isRoundTrip) {
+    const confirmText = isBusiness
+      ? "We are delighted to confirm your transfer:"
+      : "We are pleased to confirm your transfer:";
+
+    const upgradeBlock = !isBusiness
+      ? `\n\n*Business Class Upgrade Available*\n\nFor only 10€ extra per transfer, we can upgrade your journey to a Mercedes-Benz Business Class Vehicle.\n\n${businessFeaturesBlock()}`
+      : "";
+
+    const returnBlock = `\n\n*Return Transfer*\n\nIf you have not yet arranged your return transfer, we would be delighted to organise it for you.\n\nPlease simply let us know:\n\n• Return date\n• Flight departure time\n• Pickup hotel`;
+
+    return `Hello ${value(data.fullName)}
 
 ${intro}
 
 ${confirmText}
 
-📅 ${formatDateTime(data.pickupDateOut)}
-📍 Pickup: ${outboundPickup}
-🏨 Drop-off: ${outboundDropoff}
-👥 Passengers: ${formatPassengers(data)}
-🧳 Baggage: ${formatBaggage(data)}
-🚼 Stroller: ${value(data.strollers, 0)}
-🚐 Vehicle: ${formatVehicle(data)}
-${
-  isRoundTrip
-    ? `
-📅 ${formatDateTime(data.pickupDateReturn)}
-🏨 Pickup: ${returnPickup} → ${returnDropoff}
-`
-    : ""
-}
-💶 Price: ${formatPrice(data.totalPrice)}
-💳 Payment: ${titleCase(data.paymentMethod)}
-✨ Business Class: ${yesNo(data.businessClass)}
-🔁 Round trip: ${yesNo(isRoundTrip)}
+*Date:* ${formatDate(data.pickupDateOut)}
+*Time:* ${formatTime(data.pickupDateOut)}
 
-Your driver will be waiting for you in the arrival area after landing${
-    isRoundTrip ? " and at the hotel reception for your return" : ""
-  }.
+*Pickup:* ${composePlace(pickupSide)}
+*Drop-off:* ${composePlace(dropoffSide)}
 
-Please confirm that all details are correct ✅
+*Flight/Train:* ${flightOrTrain}
 
-Kind regards,
-Priya
-Disney Paris Airport Transfer 🚐`;
+${passengerBlock}
+
+${vehicleBlock}
+
+*Price:* ${formatPrice(data.totalPrice)}
+*Payment:* ${titleCase(data.paymentMethod)}
+
+${driverNote}
+
+${confirmAsk}${upgradeBlock}${returnBlock}
+
+${closing}`;
+  }
+
+  // ----- ROUND TRIP (2 WAYS) -----
+  const confirmText = isBusiness
+    ? "We are delighted to confirm your round-trip transfer:"
+    : "We are pleased to confirm your round-trip transfer:";
+
+  const arrivalRoute = `${composePlace(pickupSide)} → ${composePlace(dropoffSide)}`;
+  const returnRoute = `${composePlace(dropoffSide)} → ${composePlace(pickupSide)}`;
+  const arrivalFlight = pick(data.flightNumber, data.pickupFlightNumber, "-");
+
+  const upgradeBlock = !isBusiness
+    ? `\n\n*Business Class Upgrade Available*\n\nFor only 10€ extra per transfer (20€ round trip), we can upgrade both journeys to a Mercedes-Benz Business Class Vehicle.\n\n${businessFeaturesBlock()}`
+    : "";
+
+  const businessClosing = isBusiness
+    ? "\n\nWe look forward to welcoming you to Disneyland Paris and providing a premium travel experience."
+    : "";
+
+  return `Hello ${value(data.fullName)}
+
+${intro}
+
+${confirmText}
+
+*Arrival Transfer*
+
+*Date:* ${formatDate(data.pickupDateOut)}
+*Time:* ${formatTime(data.pickupDateOut)}
+
+${arrivalRoute}
+
+*Flight:* ${arrivalFlight}
+
+*Return Transfer*
+
+*Date:* ${formatDate(data.pickupDateReturn)}
+*Pickup Time:* ${formatTime(data.pickupDateReturn)}
+
+${returnRoute}
+
+${passengerBlock}
+
+${vehicleBlock}
+
+*Total Price:* ${formatPrice(data.totalPrice)}
+*Payment:* ${titleCase(data.paymentMethod)}
+
+${driverNote}
+
+${confirmAsk}${upgradeBlock}${businessClosing}
+
+${closing}`;
 };
 
 module.exports = {
   generateCustomerBookingWhatsApp,
+  // di-export juga supaya bisa dipakai ulang di template admin
+  value,
+  pick,
+  boolValue,
+  titleCase,
+  formatDate,
+  formatTime,
+  formatPrice,
+  composePlace,
+  formatBaggage,
+  formatSeatsOnly,
 };

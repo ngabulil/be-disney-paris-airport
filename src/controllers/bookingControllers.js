@@ -97,6 +97,7 @@ const sendBookingNotifications = async ({
     }
 
     const businessWaKey = waKeyData.keyNumberBusiness;
+    const personalWaKey = waKeyData.keyNumberPersonal;
 
     const adminHtml = generateAdminBookingEmail(data);
     const customerHtml = generateBookingEmailCustomer(data);
@@ -129,15 +130,15 @@ const sendBookingNotifications = async ({
     ];
 
     // kirim ke admin nomor pertama pakai key business dari database
-    if (firstAdminWaNumber) {
+    // if (firstAdminWaNumber) {
         tasks.push(
             sendWhatsAppMessage({
-                phoneNo: firstAdminWaNumber,
+                phoneNo: 447458041326,
                 message: adminWaMessage,
-                numberKey: businessWaKey,
+                apiKey: businessWaKey,
             })
         );
-    }
+    // }
 
     // kirim ke customer pakai key business dari database
     if (customerWaNumber) {
@@ -145,7 +146,7 @@ const sendBookingNotifications = async ({
             sendWhatsAppMessage({
                 phoneNo: customerWaNumber,
                 message: customerWaMessage,
-                numberKey: businessWaKey,
+                apiKey: businessWaKey,
             })
         );
     }

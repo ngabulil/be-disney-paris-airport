@@ -15,8 +15,8 @@ const getSenderWhatsAppNumber = (waNumber) => {
     );
 };
 
-const sendWhatsAppMessage = async ({ phoneNo, message }) => {
-    const apiKey = process.env.API_KEY_WA;
+const sendWhatsAppMessage = async ({ phoneNo, message, apiKey }) => {
+    // const apiKey = process.env.API_KEY_WA;
     const baseUrl = process.env.BASE_URL_WA || "https://notify.disneyparisairporttransfer.com/api";
 
     if (!apiKey) {
