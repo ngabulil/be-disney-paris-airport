@@ -1,15 +1,46 @@
-const value = (v, fallback = "-") => {
-  if (v === undefined || v === null || v === "" || v === "-") return fallback;
-  return v;
-};
-
 const isFilled = (v) => {
   return v !== undefined && v !== null && v !== "" && v !== "-";
+};
+
+const getName = (item) => {
+  if (!isFilled(item)) return "";
+
+  if (
+    typeof item === "string" ||
+    typeof item === "number" ||
+    typeof item === "boolean"
+  ) {
+    return String(item).trim();
+  }
+
+  return (
+    item.name ||
+    item.title ||
+    item.label ||
+    item.value ||
+    item.code ||
+    ""
+  );
+};
+
+const value = (v, fallback = "-") => {
+  if (!isFilled(v)) return fallback;
+
+  if (typeof v === "object") {
+    const name = getName(v);
+    return name || fallback;
+  }
+
+  return String(v);
 };
 
 const toNumber = (v) => {
   const n = Number(v || 0);
   return Number.isNaN(n) ? 0 : n;
+};
+
+const boolValue = (v) => {
+  return v === true || v === "true" || v === "yes" || v === 1 || v === "1";
 };
 
 const titleCase = (text) => {
@@ -20,8 +51,8 @@ const titleCase = (text) => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-const yesNo = (value) => {
-  return value ? "Yes" : "No";
+const yesNo = (val) => {
+  return boolValue(val) ? "Yes" : "No";
 };
 
 const plural = (count, singular, pluralText = `${singular}s`) => {
@@ -29,33 +60,53 @@ const plural = (count, singular, pluralText = `${singular}s`) => {
   return `${n} ${n > 1 ? pluralText : singular}`;
 };
 
-const formatWaDateTime = (dateValue) => {
+const formatDateParis = (dateValue) => {
   if (!dateValue) return "-";
 
   const d = new Date(dateValue);
+
   if (Number.isNaN(d.getTime())) return "-";
 
-  const date = new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "long",
     year: "numeric",
     timeZone: "Europe/Paris",
   }).format(d);
+};
 
-  const time = new Intl.DateTimeFormat("en-GB", {
+const formatTimeParis = (dateValue) => {
+  if (!dateValue) return "-";
+
+  const d = new Date(dateValue);
+
+  if (Number.isNaN(d.getTime())) return "-";
+
+  return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
     timeZone: "Europe/Paris",
   }).format(d);
+};
+
+const formatWaDateTime = (dateValue) => {
+  if (!dateValue) return "-";
+
+  const date = formatDateParis(dateValue);
+  const time = formatTimeParis(dateValue);
+
+  if (date === "-" || time === "-") return "-";
 
   return `${date} at ${time}`;
 };
 
 const formatTerminal = (terminal) => {
-  if (!isFilled(terminal)) return "";
+  const terminalName = getName(terminal);
 
-  const text = String(terminal).trim();
+  if (!isFilled(terminalName)) return "";
+
+  const text = String(terminalName).trim();
 
   if (/terminal/i.test(text)) return text;
 
@@ -65,8 +116,10 @@ const formatTerminal = (terminal) => {
 const formatAirportDetail = ({ terminal, flightNumber }) => {
   const details = [];
 
-  if (isFilled(terminal)) {
-    details.push(formatTerminal(terminal));
+  const terminalText = formatTerminal(terminal);
+
+  if (isFilled(terminalText)) {
+    details.push(terminalText);
   }
 
   if (isFilled(flightNumber)) {
@@ -126,7 +179,9 @@ const formatPassengers = (data) => {
   const seats = [
     toNumber(data.childSeats) > 0 ? plural(data.childSeats, "child seat") : "",
     toNumber(data.babySeats) > 0 ? plural(data.babySeats, "baby seat") : "",
-    toNumber(data.boosterSeats) > 0 ? plural(data.boosterSeats, "booster seat") : "",
+    toNumber(data.boosterSeats) > 0
+      ? plural(data.boosterSeats, "booster seat")
+      : "",
   ].filter(Boolean);
 
   if (!seats.length) {
@@ -149,32 +204,166 @@ const formatBaggage = (data) => {
 
 const formatVehicle = (data) => {
   const vehicleName = value(data.vehicle, "");
-  const vehicleType = value(data.vehicleBookingType, "") || value(data.vehicleType, "");
+  const vehicleType =
+    value(data.vehicleBookingType, "") || value(data.vehicleType, "");
 
   if (vehicleName && vehicleType) {
-    return `${vehicleName}– ${vehicleType}`;
+    return `${vehicleName} – ${vehicleType}`;
   }
 
   return vehicleName || vehicleType || "-";
 };
 
 const formatPrice = (data) => {
-  if (data.totalPriceRaw !== undefined && data.totalPriceRaw !== null) {
-    return `${Number(data.totalPriceRaw)}€`;
+  if (isFilled(data.totalPrice)) {
+    const text = String(data.totalPrice);
+    return text.includes("€") ? text : `${text}€`;
   }
 
-  if (isFilled(data.totalPrice)) {
-    return String(data.totalPrice).replace("€", "") + "€";
+  if (data.totalPriceRaw !== undefined && data.totalPriceRaw !== null) {
+    return `${Number(data.totalPriceRaw)}€`;
   }
 
   return "-";
 };
 
 const isBusinessClass = (data) => {
-  if (typeof data.businessClass === "boolean") return data.businessClass;
+  const text = [
+    data.businessClass,
+    data.vehicle,
+    data.vehicleId,
+    data.vehicleBookingType,
+    data.vehicleType,
+    data.transportClass,
+  ]
+    .map(getName)
+    .join(" ")
+    .toLowerCase();
 
-  // Kalau belum ada field khusus businessClass di model, default No.
-  return false;
+  return /business|premium|luxury|vip|mercedes/.test(text);
+};
+
+const stringifyId = (id) => {
+  if (!id) return "-";
+
+  try {
+    return String(id);
+  } catch {
+    return "-";
+  }
+};
+
+const formatBookingEmailData = (booking) => {
+  const b =
+    booking && typeof booking.toObject === "function"
+      ? booking.toObject()
+      : booking || {};
+
+  const pickupLocationName = getName(b.pickupLocation);
+  const dropoffLocationName = getName(b.dropoffLocation);
+
+  const pickupHotelName = getName(b.pickupHotel);
+  const dropoffHotelName = getName(b.dropoffHotel);
+
+  const pickupTerminalName = getName(b.pickupTerminal);
+  const dropoffTerminalName = getName(b.dropoffTerminal);
+
+  const vehicleName = getName(b.vehicleId);
+
+  return {
+    bookingId: stringifyId(b._id),
+
+    receivedDate: new Date().toLocaleString("en-GB", {
+      timeZone: "Europe/Paris",
+    }),
+
+    createdAt: b.createdAt
+      ? new Date(b.createdAt).toLocaleString("en-GB", {
+          timeZone: "Europe/Paris",
+        })
+      : "-",
+
+    updatedAt: b.updatedAt
+      ? new Date(b.updatedAt).toLocaleString("en-GB", {
+          timeZone: "Europe/Paris",
+        })
+      : "-",
+
+    fullName: b.fullName || "-",
+    phoneNumber: b.phoneNumber || "-",
+    email: b.email || "-",
+
+    pickupLocation: pickupLocationName || "-",
+    pickupLocationType: b.pickupLocation?.locationType || "-",
+
+    dropoffLocation: dropoffLocationName || "-",
+    dropoffLocationType: b.dropoffLocation?.locationType || "-",
+
+    pickupHotel: pickupHotelName || "",
+    dropoffHotel: dropoffHotelName || "",
+
+    pickupTerminal: pickupTerminalName || "",
+    pickupTerminalLocation: b.pickupTerminal?.location || "",
+
+    dropoffTerminal: dropoffTerminalName || "",
+    dropoffTerminalLocation: b.dropoffTerminal?.location || "",
+
+    pickupFlightNumber: b.pickupFlightNumber || "",
+    dropoffFlightNumber: b.dropoffFlightNumber || "",
+
+    pickupAddress: b.pickupAddress || "",
+    dropoffAddress: b.dropoffAddress || "",
+
+    vehicleId: b.vehicleId || "",
+    vehicle: vehicleName || "-",
+    vehicleBookingType: b.vehicleId?.bookingType || "-",
+    vehicleType: b.vehicleId?.vehicleType || "-",
+    vehicleMaxPassenger: b.vehicleId?.maxPassenger ?? "-",
+    vehicleMaxUnit: b.vehicleId?.maxUnit ?? "-",
+    vehicleMaxStroller: b.vehicleId?.maxStroller ?? "-",
+
+    roundtrip: boolValue(b.roundtrip),
+
+    passengers: b.passengers ?? 0,
+    suitcases: b.suitcases ?? 0,
+    handLuggage: b.handLuggage ?? 0,
+    strollers: b.strollers ?? 0,
+    babySeats: b.babySeats ?? 0,
+    boosterSeats: b.boosterSeats ?? 0,
+    childSeats: b.childSeats ?? 0,
+
+    pickupDateOut: b.pickupDateOut || null,
+    pickupDateOutFormatted: formatDateParis(b.pickupDateOut),
+    pickupTimeOutFormatted: formatTimeParis(b.pickupDateOut),
+
+    pickupDateReturn: b.pickupDateReturn || null,
+    pickupDateReturnFormatted: b.pickupDateReturn
+      ? formatDateParis(b.pickupDateReturn)
+      : "-",
+    pickupTimeReturnFormatted: b.pickupDateReturn
+      ? formatTimeParis(b.pickupDateReturn)
+      : "-",
+
+    totalPrice: b.totalPrice ?? "-",
+    totalPriceRaw: b.totalPrice ?? null,
+
+    statusTrip: b.statusTrip || "-",
+    statusPayment: Boolean(b.statusPayment),
+    paymentMethod: b.paymentMethod || "-",
+
+    isDeleted: Boolean(b.isDeleted),
+    deletedAt: b.deletedAt || "-",
+
+    // fallback untuk template lama
+    from: pickupLocationName || "-",
+    to: dropoffLocationName || "-",
+    pickupDate: b.pickupDateOut || null,
+    pickupTime: formatTimeParis(b.pickupDateOut),
+    flightNumber: b.pickupFlightNumber || "-",
+    terminal: pickupTerminalName || "-",
+
+    notes: b.notes || "-",
+  };
 };
 
 const generateCustomerBookingWhatsApp = (data, options = {}) => {
@@ -190,7 +379,7 @@ const generateCustomerBookingWhatsApp = (data, options = {}) => {
       ? "Please find your updated transfer details:"
       : "We are pleased to confirm your transfers:";
 
-  const isRoundTrip = Boolean(data.roundtrip);
+  const isRoundTrip = boolValue(data.roundtrip);
 
   const returnBlock = isRoundTrip
     ? `
@@ -229,34 +418,29 @@ Priya
 Disney Paris Airport Transfer 🚐`;
 };
 
-const formatBookingEmailData = (booking) => {
-  return {
-    bookingId: booking._id,
-    receivedDate: new Date().toLocaleString(),
-    fullName: booking.fullName,
-    phoneNumber: booking.phoneNumber,
-    email: booking.email,
-    from: booking.pickupLocation?.name || "-",
-    to: booking.dropoffLocation?.name || "-",
-    pickupDate: booking.pickupDateOut,
-    pickupTime: new Date(booking.pickupDateOut).toLocaleTimeString(),
-    flightNumber: booking.flightNumber || "-",
-    terminal: booking.pickupTerminal?.name || "-",
-    passengers: booking.passengers,
-    childSeats: booking.childSeats,
-    babySeats: booking.babySeats,
-    boosterSeats: booking.boosterSeats,
-    handLuggage: booking.handLuggage,
-    suitcases: booking.suitcases,
-    vehicle: booking.vehicleId?.name || "-",
-    paymentMethod: booking.paymentMethod,
-    totalPrice: booking.totalPrice,
-    statusPayment: booking.statusPayment,
-    notes: booking.notes,
-  }
-}
-
 module.exports = {
   generateCustomerBookingWhatsApp,
-  formatBookingEmailData
+  formatBookingEmailData,
+
+  value,
+  isFilled,
+  getName,
+  toNumber,
+  boolValue,
+  titleCase,
+  yesNo,
+  plural,
+  formatDateParis,
+  formatTimeParis,
+  formatWaDateTime,
+  formatTerminal,
+  formatPickupPlace,
+  formatDropoffPlace,
+  formatSimplePickupPlace,
+  formatSimpleDropoffPlace,
+  formatPassengers,
+  formatBaggage,
+  formatVehicle,
+  formatPrice,
+  isBusinessClass,
 };

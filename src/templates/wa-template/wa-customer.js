@@ -1,41 +1,42 @@
-// ===== Helper Functions =====
-
-const { isBusinessBooking } = require("../../utils/booking-template");
-
-const ICON = {
-  date: "🗓️",
-  time: "⏰",
-  pickup: "📍",
-  dropoff: "📍",
-  flight: "✈️",
-  passengers: "👥",
-  luggage: "🧳",
-  childSeats: "🚼",
-  vehicle: "🚐",
-  price: "💶",
-  payment: "💳",
-  business: "✨",
-  star: "🌟",
-  tv: "📺",
-  seat: "💺",
-  aircon: "❄️",
-  return: "🔁",
-  hotel: "🏨",
-};
-
-const value = (v, fallback = "-") => {
-  if (v === undefined || v === null || v === "") return fallback;
-  return v;
-};
-
-const pick = (...values) => {
-  return values.find((v) => v !== undefined && v !== null && v !== "");
+const isFilled = (v) => {
+  return v !== undefined && v !== null && v !== "" && v !== "-";
 };
 
 const getName = (item) => {
-  if (!item) return "";
-  if (typeof item === "string") return item;
-  return item.name || item.title || item.label || "";
+  if (!isFilled(item)) return "";
+
+  if (
+    typeof item === "string" ||
+    typeof item === "number" ||
+    typeof item === "boolean"
+  ) {
+    return String(item).trim();
+  }
+
+  return (
+    item.name ||
+    item.title ||
+    item.label ||
+    item.value ||
+    item.code ||
+    ""
+  );
+};
+
+const value = (v, fallback = "-") => {
+  if (!isFilled(v)) return fallback;
+
+  if (typeof v === "object") {
+    const name = getName(v);
+    return name || fallback;
+  }
+
+  return String(v);
+};
+
+const pick = (...values) => {
+  const found = values.find((v) => isFilled(v));
+  return found === undefined ? "-" : found;
 };
 
 const toNumber = (val) => {
@@ -43,24 +44,29 @@ const toNumber = (val) => {
   return Number.isNaN(n) ? 0 : n;
 };
 
-const plural = (count, singular, pluralText = `${singular}s`) => {
-  const n = toNumber(count);
-  return `${n} ${n > 1 ? pluralText : singular}`;
-};
-
 const boolValue = (v) => {
   return v === true || v === "true" || v === "yes" || v === 1 || v === "1";
 };
 
 const titleCase = (text) => {
-  if (!text) return "-";
-  return String(text).charAt(0).toUpperCase() + String(text).slice(1);
+  if (!isFilled(text)) return "-";
+
+  return String(text)
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const plural = (count, singular, pluralText = `${singular}s`) => {
+  const n = toNumber(count);
+  return `${n} ${n > 1 ? pluralText : singular}`;
 };
 
 const formatDate = (dateValue) => {
   if (!dateValue) return "-";
+
   const d = new Date(dateValue);
-  if (Number.isNaN(d.getTime())) return String(dateValue);
+  if (Number.isNaN(d.getTime())) return "-";
+
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "long",
@@ -71,8 +77,10 @@ const formatDate = (dateValue) => {
 
 const formatTime = (dateValue) => {
   if (!dateValue) return "-";
+
   const d = new Date(dateValue);
   if (Number.isNaN(d.getTime())) return "-";
+
   return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -81,25 +89,43 @@ const formatTime = (dateValue) => {
   }).format(d);
 };
 
-const formatPrice = (price) => {
-  if (price === undefined || price === null || price === "") return "-";
-  const text = String(price);
-  if (text.includes("€")) return text;
-  return `${text}€`;
+const getDisplayDate = (dateValue, formattedDate) => {
+  if (isFilled(formattedDate)) return formattedDate;
+  return formatDate(dateValue);
+};
+
+const getDisplayTime = (dateValue, formattedTime) => {
+  if (isFilled(formattedTime)) return formattedTime;
+  return formatTime(dateValue);
+};
+
+const formatPrice = (data) => {
+  if (isFilled(data.totalPrice)) {
+    const text = String(data.totalPrice);
+    return text.includes("€") ? text : `${text}€`;
+  }
+
+  if (data.totalPriceRaw !== undefined && data.totalPriceRaw !== null) {
+    return `${Number(data.totalPriceRaw)}€`;
+  }
+
+  return "-";
 };
 
 const formatTerminal = (terminal) => {
   const terminalName = getName(terminal);
-  if (!terminalName) return "";
+
+  if (!isFilled(terminalName)) return "";
+
   if (/terminal/i.test(terminalName)) return terminalName;
+
   return `Terminal ${terminalName}`;
 };
 
-// Nama tempat (hotel/alamat/lokasi) + terminal jika ada, dipakai untuk Pickup/Drop-off
 const composePlace = ({ location, hotel, terminal, address }) => {
-  const locationName = getName(location);
   const hotelName = getName(hotel);
-  const addressText = value(address, "");
+  const addressText = getName(address);
+  const locationName = getName(location);
   const terminalText = formatTerminal(terminal);
 
   const base = hotelName || addressText || locationName || "-";
@@ -130,6 +156,87 @@ const formatBaggage = (data) => {
   return items.length ? items.join(", ") : "0";
 };
 
+const isBusinessBooking = (data) => {
+  const text = [
+    data.businessClass,
+    data.vehicle,
+    data.vehicleId,
+    data.vehicleBookingType,
+    data.vehicleType,
+    data.transportClass,
+  ]
+    .map(getName)
+    .join(" ")
+    .toLowerCase();
+
+  return /business|premium|luxury|vip|mercedes/.test(text);
+};
+
+const normalizeBookingData = (data = {}) => {
+  return {
+    ...data,
+
+    pickupDateOut:
+      data.pickupDateOut ||
+      data.pickupDate ||
+      data.date ||
+      data.pickupDateOutRaw ||
+      null,
+
+    pickupDateReturn:
+      data.pickupDateReturn ||
+      data.returnDate ||
+      data.pickupDateReturnRaw ||
+      null,
+
+    pickupLocation:
+      data.pickupLocation ||
+      data.from ||
+      data.pickup ||
+      data.pickupPlace ||
+      "-",
+
+    dropoffLocation:
+      data.dropoffLocation ||
+      data.to ||
+      data.dropoff ||
+      data.dropoffPlace ||
+      "-",
+
+    pickupFlightNumber:
+      data.pickupFlightNumber ||
+      data.flightNumber ||
+      data.flight ||
+      "",
+
+    dropoffFlightNumber:
+      data.dropoffFlightNumber ||
+      data.returnFlightNumber ||
+      "",
+  };
+};
+
+const ICON = {
+  date: "🗓️",
+  time: "⏰",
+  pickup: "📍",
+  dropoff: "📍",
+  flight: "✈️",
+  passengers: "👥",
+  luggage: "🧳",
+  childSeats: "🚼",
+  vehicle: "🚐",
+  price: "💶",
+  payment: "💳",
+  business: "✨",
+  star: "🌟",
+  tv: "📺",
+  seat: "💺",
+  aircon: "❄️",
+  return: "🔁",
+  hotel: "🏨",
+};
+
 const BUSINESS_FEATURES = [
   `${ICON.star} Starlight ceiling`,
   `${ICON.tv} TV with Disney movies`,
@@ -137,21 +244,16 @@ const BUSINESS_FEATURES = [
   `${ICON.aircon} Air conditioning`,
 ];
 
-const businessFeaturesBlock = () => BUSINESS_FEATURES.join("\n");
+const businessFeaturesBlock = () => {
+  return BUSINESS_FEATURES.join("\n");
+};
 
-// ===== Template Builder =====
-// Menghasilkan salah satu dari 4 varian:
-// 1. One way - No business
-// 2. One way - Business
-// 3. 2 ways - No business
-// 4. 2 ways - Business
-const generateCustomerBookingWhatsApp = (data, options = {}) => {
+const generateCustomerBookingWhatsApp = (rawData, options = {}) => {
+  const data = normalizeBookingData(rawData);
   const { type = "created" } = options;
 
-  const isRoundTrip = boolValue(data.roundtrip || data.roundTrip);
-  const isBusiness = isBusinessBooking
-    ? isBusinessBooking(data)
-    : boolValue(data.businessClass);
+  const isRoundTrip = boolValue(data.roundtrip) || boolValue(data.roundTrip);
+  const isBusiness = isBusinessBooking(data);
 
   const intro =
     type === "updated"
@@ -185,21 +287,23 @@ const generateCustomerBookingWhatsApp = (data, options = {}) => {
 ${businessFeaturesBlock()}`
     : `${ICON.vehicle} *Vehicle:* ${vehicleLabel}`;
 
-  const passengerBlock = `${ICON.passengers} *Passengers:* ${value(data.passengers)}
+  const passengerBlock = `${ICON.passengers} *Passengers:* ${value(
+    data.passengers
+  )}
 ${ICON.luggage} *Luggage:* ${formatBaggage(data)}
 ${ICON.childSeats} *Child Seats:* ${formatSeatsOnly(data)}`;
 
   const driverNote =
     "For your arrival, your driver will be waiting inside the arrivals hall with a name board displaying your name.";
 
-  const confirmAsk = "Could you kindly confirm that all details above are correct?";
+  const confirmAsk =
+    "Could you kindly confirm that all details above are correct?";
 
   const closing = `Kind regards,
 
 Priya
 Disney Paris Airport Transfer`;
 
-  // ONE WAY
   if (!isRoundTrip) {
     const confirmText = isBusiness
       ? "We are delighted to confirm your transfer:"
@@ -241,8 +345,14 @@ ${intro}
 
 ${confirmText}
 
-${ICON.date} *Date:* ${formatDate(data.pickupDateOut)}
-${ICON.time} *Time:* ${formatTime(data.pickupDateOut)}
+${ICON.date} *Date:* ${getDisplayDate(
+      data.pickupDateOut,
+      data.pickupDateOutFormatted
+    )}
+${ICON.time} *Time:* ${getDisplayTime(
+      data.pickupDateOut,
+      data.pickupTimeOutFormatted
+    )}
 
 ${ICON.pickup} *Pickup:* ${pickupPlace}
 ${ICON.dropoff} *Drop-off:* ${dropoffPlace}
@@ -253,7 +363,7 @@ ${passengerBlock}
 
 ${vehicleBlock}
 
-${ICON.price} *Price:* ${formatPrice(data.totalPrice)}
+${ICON.price} *Price:* ${formatPrice(data)}
 ${ICON.payment} *Payment:* ${titleCase(data.paymentMethod)}
 
 ${driverNote}
@@ -263,7 +373,6 @@ ${confirmAsk}${upgradeBlock}${returnTransferBlock}
 ${closing}`;
   }
 
-  // ROUND TRIP
   const confirmText = isBusiness
     ? "We are delighted to confirm your round-trip transfer:"
     : "We are pleased to confirm your round-trip transfer:";
@@ -271,7 +380,11 @@ ${closing}`;
   const arrivalRoute = `${pickupPlace} → ${dropoffPlace}`;
   const returnRoute = `${dropoffPlace} → ${pickupPlace}`;
 
-  const arrivalFlight = pick(data.flightNumber, data.pickupFlightNumber, "-");
+  const arrivalFlight = pick(
+    data.flightNumber,
+    data.pickupFlightNumber,
+    "-"
+  );
 
   const upgradeBlock = !isBusiness
     ? `
@@ -297,8 +410,14 @@ ${confirmText}
 
 ${ICON.flight} *Arrival Transfer*
 
-${ICON.date} *Date:* ${formatDate(data.pickupDateOut)}
-${ICON.time} *Time:* ${formatTime(data.pickupDateOut)}
+${ICON.date} *Date:* ${getDisplayDate(
+    data.pickupDateOut,
+    data.pickupDateOutFormatted
+  )}
+${ICON.time} *Time:* ${getDisplayTime(
+    data.pickupDateOut,
+    data.pickupTimeOutFormatted
+  )}
 
 ${ICON.pickup} ${arrivalRoute}
 
@@ -306,8 +425,14 @@ ${ICON.flight} *Flight:* ${arrivalFlight}
 
 ${ICON.return} *Return Transfer*
 
-${ICON.date} *Date:* ${formatDate(data.pickupDateReturn)}
-${ICON.time} *Pickup Time:* ${formatTime(data.pickupDateReturn)}
+${ICON.date} *Date:* ${getDisplayDate(
+    data.pickupDateReturn,
+    data.pickupDateReturnFormatted
+  )}
+${ICON.time} *Pickup Time:* ${getDisplayTime(
+    data.pickupDateReturn,
+    data.pickupTimeReturnFormatted
+  )}
 
 ${ICON.pickup} ${returnRoute}
 
@@ -315,7 +440,7 @@ ${passengerBlock}
 
 ${vehicleBlock}
 
-${ICON.price} *Total Price:* ${formatPrice(data.totalPrice)}
+${ICON.price} *Total Price:* ${formatPrice(data)}
 ${ICON.payment} *Payment:* ${titleCase(data.paymentMethod)}
 
 ${driverNote}
@@ -327,7 +452,7 @@ ${closing}`;
 
 module.exports = {
   generateCustomerBookingWhatsApp,
-  // di-export juga supaya bisa dipakai ulang di template admin
+
   value,
   pick,
   boolValue,
@@ -338,4 +463,5 @@ module.exports = {
   composePlace,
   formatBaggage,
   formatSeatsOnly,
+  isBusinessBooking,
 };
