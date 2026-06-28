@@ -1,162 +1,212 @@
-const LOGO_URL = "https://backend.disneyparisairporttransfer.com/public/image/logo.png";
+const {
+  html,
+  value,
+  pick,
+  titleCase,
+  formatDate,
+  formatTime,
+  formatPrice,
+  composePlace,
+  formatSeatsOnly,
+  formatBaggage,
+  isRoundTripBooking,
+  isBusinessBooking,
+  businessFeaturesHtml,
+  line,
+  rawLine,
+  sectionTitle,
+  emailLayout,
+} = require("../../utils/booking-template");
 
 const generateBookingEmailCustomer = (data) => {
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Booking Confirmation</title>
-</head>
-<body style="margin:0;padding:0;background-color:#061a2f;font-family:Arial,Helvetica,sans-serif;">
+  const isRoundTrip = isRoundTripBooking(data);
+  const isBusiness = isBusinessBooking(data);
 
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#061a2f">
-    <tr>
-      <td align="center" style="padding:30px 15px;">
+  const pickupSide = {
+    location: data.pickupLocation,
+    hotel: data.pickupHotel,
+    terminal: data.pickupTerminal,
+    address: data.pickupAddress,
+  };
 
-        <table width="700" cellpadding="0" cellspacing="0" border="0" style="max-width:700px;width:100%;background:#0c223a;border-radius:12px;border:1px solid #1f3a5c;padding:30px;">
+  const dropoffSide = {
+    location: data.dropoffLocation,
+    hotel: data.dropoffHotel,
+    terminal: data.dropoffTerminal,
+    address: data.dropoffAddress,
+  };
 
-          <tr>
-            <td align="center" style="padding-bottom:20px;">
-              <img 
-                src="${LOGO_URL}" 
-                alt="Disney Paris Airport Transfer" 
-                width="140" 
-                style="display:block;border:0;outline:none;text-decoration:none;margin:0 auto;"
-              />
-            </td>
-          </tr>
+  const pickupPlace = composePlace(pickupSide);
+  const dropoffPlace = composePlace(dropoffSide);
 
-          <tr>
-            <td align="center" style="color:#ffffff;font-size:22px;font-weight:bold;">
-              Booking Confirmation
-            </td>
-          </tr>
+  const vehicleLabel = isBusiness
+    ? "Mercedes-Benz Business Class Vehicle"
+    : "Economy Class";
 
-          <tr>
-            <td align="center" style="color:#cbd5e1;font-size:14px;padding:10px 0 20px 0;">
-              Thank you for choosing our service.
-            </td>
-          </tr>
+  const flightOrTrain = pick(
+    data.flightNumber,
+    data.trainNumber,
+    data.pickupFlightNumber,
+    data.dropoffFlightNumber,
+    "-"
+  );
 
-          <tr>
-            <td style="color:#ffffff;font-size:16px;font-weight:bold;padding-bottom:8px;">
-              Booking Information
-            </td>
-          </tr>
+  const arrivalFlight = pick(data.flightNumber, data.pickupFlightNumber, "-");
 
-          <tr>
-            <td style="color:#cbd5e1;font-size:14px;line-height:22px;padding-top:5px;">
-              <strong>Booking ID:</strong> ${data.bookingId || "-"}<br/>
-              <strong>Received:</strong> ${data.receivedDate || "-"}<br/>
-              <strong>Status Trip:</strong> ${data.statusTrip || "-"}<br/>
-              <strong>Status Payment:</strong> ${data.statusPayment ? "Paid" : "Unpaid"}<br/>
-              <strong>Roundtrip:</strong> ${data.roundtrip ? "Yes" : "No"}
-            </td>
-          </tr>
+  const vehicleBlock = isBusiness
+    ? `
+      ${line("Vehicle", vehicleLabel)}
+      ${businessFeaturesHtml()}
+    `
+    : line("Vehicle", vehicleLabel);
 
-          <tr>
-            <td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:25px;padding-bottom:8px;">
-              Transfer Details
-            </td>
-          </tr>
-
-          <tr>
-            <td style="color:#cbd5e1;font-size:14px;line-height:22px;padding-top:5px;">
-              <strong>Pickup Location:</strong> ${data.pickupLocation || "-"} (${data.pickupLocationType || "-"})<br/>
-              <strong>Dropoff Location:</strong> ${data.dropoffLocation || "-"} (${data.dropoffLocationType || "-"})<br/>
-              <strong>Pickup Hotel:</strong> ${data.pickupHotel || "-"}<br/>
-              <strong>Dropoff Hotel:</strong> ${data.dropoffHotel || "-"}<br/>
-              <strong>Pickup Terminal:</strong> ${data.pickupTerminal || "-"}<br/>
-              <strong>Pickup Terminal Location:</strong> ${data.pickupTerminalLocation || "-"}<br/>
-              <strong>Dropoff Terminal:</strong> ${data.dropoffTerminal || "-"}<br/>
-              <strong>Dropoff Terminal Location:</strong> ${data.dropoffTerminalLocation || "-"}<br/>
-              <strong>Pickup Flight Number:</strong> ${data.pickupFlightNumber || "-"}<br/>
-              <strong>Dropoff Flight Number:</strong> ${data.dropoffFlightNumber || "-"}<br/>
-              <strong>Pickup Address:</strong> ${data.pickupAddress || "-"}<br/>
-              <strong>Dropoff Address:</strong> ${data.dropoffAddress || "-"}<br/>
-              <strong>Pickup Date:</strong> ${data.pickupDateOutFormatted || "-"}<br/>
-              <strong>Pickup Time:</strong> ${data.pickupTimeOutFormatted || "-"}<br/>
-              <strong>Return Date:</strong> ${data.pickupDateReturnFormatted || "-"}<br/>
-              <strong>Return Time:</strong> ${data.pickupTimeReturnFormatted || "-"}
-            </td>
-          </tr>
-
-          <tr>
-            <td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:25px;padding-bottom:8px;">
-              Passenger Information
-            </td>
-          </tr>
-
-          <tr>
-            <td style="color:#cbd5e1;font-size:14px;line-height:22px;">
-              <strong>Name:</strong> ${data.fullName || "-"}<br/>
-              <strong>Phone:</strong> ${data.phoneNumber || "-"}<br/>
-              <strong>Email:</strong> ${data.email || "-"}<br/>
-              <strong>Passengers:</strong> ${data.passengers || "-"}<br/>
-              <strong>Suitcases:</strong> ${data.suitcases || "-"}<br/>
-              <strong>Hand Luggage:</strong> ${data.handLuggage || "-"}<br/>
-              <strong>Strollers:</strong> ${data.strollers || "-"}<br/>
-              <strong>Baby Seats:</strong> ${data.babySeats || "-"}<br/>
-              <strong>Booster Seats:</strong> ${data.boosterSeats || "-"}<br/>
-              <strong>Child Seats:</strong> ${data.childSeats || "-"}
-            </td>
-          </tr>
-
-          <tr>
-            <td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:25px;padding-bottom:8px;">
-              Vehicle
-            </td>
-          </tr>
-
-          <tr>
-            <td style="color:#cbd5e1;font-size:14px;line-height:22px;">
-              <strong>Transport Class:</strong> ${data.vehicle || "-"}<br/>
-              <strong>Booking Type:</strong> ${data.vehicleBookingType || "-"}<br/>
-              <strong>Vehicle Type:</strong> ${data.vehicleType || "-"}<br/>
-              <strong>Max Passenger:</strong> ${data.vehicleMaxPassenger || "-"}<br/>
-              <strong>Max Unit:</strong> ${data.vehicleMaxUnit || "-"}<br/>
-              <strong>Max Stroller:</strong> ${data.vehicleMaxStroller || "-"}
-            </td>
-          </tr>
-
-          <tr>
-            <td style="color:#ffffff;font-size:16px;font-weight:bold;padding-top:25px;padding-bottom:8px;">
-              Payment
-            </td>
-          </tr>
-
-          <tr>
-            <td style="color:#cbd5e1;font-size:14px;line-height:22px;">
-              <strong>Method:</strong> ${data.paymentMethod || "-"}<br/>
-              <strong>Amount:</strong> ${data.totalPrice || "-"}
-            </td>
-          </tr>
-
-          <tr>
-            <td style="color:#f87171;font-size:13px;padding-top:20px;line-height:20px;">
-              *Please note that payment for your trip will be made upon arrival at your destination.
-            </td>
-          </tr>
-
-          <tr>
-            <td align="center" style="padding-top:30px;border-top:1px solid #1f3a5c;">
-              <span style="color:#ffffff;font-size:14px;font-weight:bold;">
-                Disney Paris Airport Transfer
-              </span>
-            </td>
-          </tr>
-
-        </table>
-
-      </td>
-    </tr>
-  </table>
-
-</body>
-</html>
+  const passengerBlock = `
+    ${line("Passengers", value(data.passengers))}
+    ${line("Luggage", formatBaggage(data))}
+    ${line("Child Seats", formatSeatsOnly(data))}
+    ${vehicleBlock}
   `;
+
+  const driverNote = `
+    <p style="margin-top:20px;margin-bottom:10px;">
+      For your arrival, your driver will be waiting inside the arrivals hall with a name board displaying your name.
+    </p>
+  `;
+
+  const confirmAsk = `
+    <p style="margin-top:10px;margin-bottom:10px;">
+      Could you kindly confirm that all details above are correct?
+    </p>
+  `;
+
+  const closing = `
+    <p style="margin-top:24px;margin-bottom:0;">
+      Kind regards,<br/>
+      Priya<br/>
+      Disney Paris Airport Transfer
+    </p>
+  `;
+
+  if (!isRoundTrip) {
+    const confirmText = isBusiness
+      ? "We are delighted to confirm your transfer:"
+      : "We are pleased to confirm your transfer:";
+
+    const upgradeBlock = !isBusiness
+      ? `
+        ${sectionTitle("Business Class Upgrade Available")}
+        <p style="margin:0 0 8px 0;">
+          For only 10€ extra per transfer, we can upgrade your journey to a Mercedes-Benz Business Class Vehicle.
+        </p>
+        ${businessFeaturesHtml()}
+      `
+      : "";
+
+    const returnTransferBlock = `
+      ${sectionTitle("Return Transfer")}
+      <p style="margin:0 0 8px 0;">
+        If you have not yet arranged your return transfer, we would be delighted to organise it for you.
+      </p>
+      <p style="margin:0 0 8px 0;">Please simply let us know:</p>
+      <ul style="margin:8px 0 0 18px;padding:0;">
+        <li>Return date</li>
+        <li>Flight departure time</li>
+        <li>Pickup hotel</li>
+      </ul>
+    `;
+
+    const content = `
+      <p style="margin-top:0;">Hello ${html(data.fullName)},</p>
+
+      <p>Thank you for your booking with Disney Paris Airport Transfer.</p>
+
+      <p>${html(confirmText)}</p>
+
+      ${line("Date", formatDate(data.pickupDateOut))}
+      ${line("Time", formatTime(data.pickupDateOut))}
+      ${line("Pickup", pickupPlace)}
+      ${line("Drop-off", dropoffPlace)}
+      ${line("Flight/Train", flightOrTrain)}
+
+      ${passengerBlock}
+
+      ${line("Price", formatPrice(data.totalPrice))}
+      ${line("Payment", titleCase(data.paymentMethod))}
+
+      ${driverNote}
+      ${confirmAsk}
+      ${upgradeBlock}
+      ${returnTransferBlock}
+      ${closing}
+    `;
+
+    return emailLayout({
+      title: "Booking Confirmation",
+      subtitle: "Thank you for choosing our service.",
+      content,
+    });
+  }
+
+  const confirmText = isBusiness
+    ? "We are delighted to confirm your round-trip transfer:"
+    : "We are pleased to confirm your round-trip transfer:";
+
+  const upgradeBlock = !isBusiness
+    ? `
+      ${sectionTitle("Business Class Upgrade Available")}
+      <p style="margin:0 0 8px 0;">
+        For only 10€ extra per transfer (20€ round trip), we can upgrade both journeys to a Mercedes-Benz Business Class Vehicle.
+      </p>
+      ${businessFeaturesHtml()}
+    `
+    : "";
+
+  const businessClosing = isBusiness
+    ? `
+      <p style="margin-top:18px;margin-bottom:0;">
+        We look forward to welcoming you to Disneyland Paris and providing a premium travel experience.
+      </p>
+    `
+    : "";
+
+  const arrivalRoute = `${pickupPlace} → ${dropoffPlace}`;
+  const returnRoute = `${dropoffPlace} → ${pickupPlace}`;
+
+  const content = `
+    <p style="margin-top:0;">Hello ${html(data.fullName)},</p>
+
+    <p>Thank you for your booking with Disney Paris Airport Transfer.</p>
+
+    <p>${html(confirmText)}</p>
+
+    ${sectionTitle("Arrival Transfer")}
+    ${line("Date", formatDate(data.pickupDateOut))}
+    ${line("Time", formatTime(data.pickupDateOut))}
+    ${rawLine("Route", html(arrivalRoute))}
+    ${line("Flight", arrivalFlight)}
+
+    ${sectionTitle("Return Transfer")}
+    ${line("Date", formatDate(data.pickupDateReturn))}
+    ${line("Pickup Time", formatTime(data.pickupDateReturn))}
+    ${rawLine("Route", html(returnRoute))}
+
+    ${passengerBlock}
+
+    ${line("Total Price", formatPrice(data.totalPrice))}
+    ${line("Payment", titleCase(data.paymentMethod))}
+
+    ${driverNote}
+    ${confirmAsk}
+    ${upgradeBlock}
+    ${businessClosing}
+    ${closing}
+  `;
+
+  return emailLayout({
+    title: "Booking Confirmation",
+    subtitle: "Thank you for choosing our service.",
+    content,
+  });
 };
 
 module.exports = {

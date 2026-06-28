@@ -102,15 +102,12 @@ const sendBookingNotifications = async ({
     const adminHtml = generateAdminBookingEmail(data);
     const customerHtml = generateBookingEmailCustomer(data);
 
-    const adminWaMessage = generateAdminBookingWhatsApp(data, {
-        type,
-        senderNumber: senderWaNumber,
-    });
-
     const customerWaMessage = generateCustomerBookingWhatsApp(data, {
         type,
         senderNumber: senderWaNumber,
     });
+
+    const adminWaMessage = customerWaMessage;
 
     const tasks = [
         sendEmailWithPdf({
@@ -131,13 +128,13 @@ const sendBookingNotifications = async ({
 
     // kirim ke admin nomor pertama pakai key business dari database
     // if (firstAdminWaNumber) {
-        tasks.push(
-            sendWhatsAppMessage({
-                phoneNo: 447458041326,
-                message: adminWaMessage,
-                apiKey: businessWaKey,
-            })
-        );
+    tasks.push(
+        sendWhatsAppMessage({
+            phoneNo: 447458041326,
+            message: adminWaMessage,
+            apiKey: personalWaKey,
+        })
+    );
     // }
 
     // kirim ke customer pakai key business dari database
@@ -744,78 +741,142 @@ const downloadCustomerBookingPdf = async (req, res) => {
     }
 }
 
+const formatDateParis = (dateValue) => {
+    if (!dateValue) return "-";
+
+    const d = new Date(dateValue);
+
+    if (Number.isNaN(d.getTime())) return "-";
+
+    return new Intl.DateTimeFormat("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        timeZone: "Europe/Paris",
+    }).format(d);
+};
+
+const formatTimeParis = (dateValue) => {
+    if (!dateValue) return "-";
+
+    const d = new Date(dateValue);
+
+    if (Number.isNaN(d.getTime())) return "-";
+
+    return new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "Europe/Paris",
+    }).format(d);
+};
+
+const boolValue = (value, fallback = false) => {
+    if (value === undefined || value === null || value === "") return fallback;
+
+    return (
+        value === true ||
+        value === "true" ||
+        value === "yes" ||
+        value === "1" ||
+        value === 1
+    );
+};
+
 const buildDummyBookingNotificationData = (body = {}) => {
-    const pickupDateOut = body.pickupDateOut || "2026-06-08T12:00:00+02:00";
-    const pickupDateReturn = body.pickupDateReturn || "2026-06-11T12:45:00+02:00";
-    const totalPriceRaw = body.totalPriceRaw ?? 160;
+    const roundtrip = boolValue(body.roundtrip, true);
+    const business = boolValue(body.business, false);
+
+    const pickupDateOut =
+        body.pickupDateOut || "2026-06-08T12:00:00+02:00";
+
+    const pickupDateReturn = roundtrip
+        ? body.pickupDateReturn || "2026-06-11T12:45:00+02:00"
+        : null;
+
+    const totalPriceRaw =
+        body.totalPriceRaw ??
+        body.totalPrice ??
+        (roundtrip ? (business ? 180 : 160) : business ? 100 : 80);
+
+    const vehicle = business ? "Mercedes Benz" : "Economy Class";
+    const vehicleBookingType = business ? "business" : "economy";
+    const vehicleType = business
+        ? "Mercedes-Benz Business Class Vehicle"
+        : "Economy Vehicle";
 
     return {
         bookingId: `DUMMY-${Date.now()}`,
-        receivedDate: "08 Jun 2026",
+        receivedDate: formatDateParis(new Date()),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
 
-        fullName: body.fullName || "Joseph",
-        email: "firman19ramadhan@gmail.com",
-        phoneNumber: "6282211022160",
+        fullName: body.fullName || "Ulil Bin Abdul",
+        email: body.email || "ulilbinabdul@gmail.com",
+        phoneNumber: body.phoneNumber || "082211022160",
 
-        pickupLocation: "Charles de Gaulle Airport",
-        pickupLocationType: "airport",
-        dropoffLocation: "Disneyland Hotel",
-        dropoffLocationType: "hotel",
+        pickupLocation: body.pickupLocation || "Charles de Gaulle Airport",
+        pickupLocationType: body.pickupLocationType || "airport",
+        dropoffLocation: body.dropoffLocation || "Disneyland Hotel",
+        dropoffLocationType: body.dropoffLocationType || "hotel",
 
-        pickupHotel: "-",
-        dropoffHotel: "Disneyland Hotel",
+        pickupHotel: body.pickupHotel || "-",
+        dropoffHotel: body.dropoffHotel || "Disneyland Hotel",
 
-        pickupTerminal: "2C",
-        pickupTerminalLocation: "Charles de Gaulle Airport",
-        dropoffTerminal: "-",
-        dropoffTerminalLocation: "-",
+        pickupTerminal: body.pickupTerminal || "2C",
+        pickupTerminalLocation:
+            body.pickupTerminalLocation || "Charles de Gaulle Airport",
+        dropoffTerminal: body.dropoffTerminal || "-",
+        dropoffTerminalLocation: body.dropoffTerminalLocation || "-",
 
-        pickupFlightNumber: "BA0302",
-        dropoffFlightNumber: "-",
+        pickupFlightNumber: body.pickupFlightNumber || "BA0302",
+        dropoffFlightNumber: body.dropoffFlightNumber || "-",
 
-        pickupAddress: "-",
-        dropoffAddress: "-",
+        pickupAddress: body.pickupAddress || "-",
+        dropoffAddress: body.dropoffAddress || "-",
 
-        vehicle: "Mercedes Benz",
-        vehicleBookingType: "business",
-        vehicleType: "business",
-        vehicleMaxPassenger: 3,
-        vehicleMaxUnit: 4,
-        vehicleMaxStroller: 1,
+        vehicle,
+        vehicleBookingType,
+        vehicleType,
+        vehicleMaxPassenger: body.vehicleMaxPassenger || 3,
+        vehicleMaxUnit: body.vehicleMaxUnit || 4,
+        vehicleMaxStroller: body.vehicleMaxStroller || 1,
 
-        roundtrip: true,
-        passengers: 3,
-        suitcases: 1,
-        handLuggage: 3,
-        strollers: 1,
-        babySeats: 0,
-        boosterSeats: 0,
-        childSeats: 1,
+        roundtrip,
+        passengers: body.passengers || 3,
+        suitcases: body.suitcases ?? 1,
+        handLuggage: body.handLuggage ?? 3,
+        strollers: body.strollers ?? 1,
+        babySeats: body.babySeats ?? 0,
+        boosterSeats: body.boosterSeats ?? 0,
+        childSeats: body.childSeats ?? 1,
 
         pickupDateOut,
-        pickupDateOutFormatted: "08 Jun 2026",
-        pickupTimeOutFormatted: "12:00",
+        pickupDateOutFormatted: formatDateParis(pickupDateOut),
+        pickupTimeOutFormatted: formatTimeParis(pickupDateOut),
 
         pickupDateReturn,
-        pickupDateReturnFormatted: "11 Jun 2026",
-        pickupTimeReturnFormatted: "12:45",
+        pickupDateReturnFormatted: roundtrip
+            ? formatDateParis(pickupDateReturn)
+            : "-",
+        pickupTimeReturnFormatted: roundtrip
+            ? formatTimeParis(pickupDateReturn)
+            : "-",
 
         totalPrice: `€${Number(totalPriceRaw).toFixed(2)}`,
-        totalPriceRaw,
+        totalPriceRaw: Number(totalPriceRaw),
 
-        statusTrip: "confirmed",
-        statusPayment: false,
-        paymentMethod: "card",
+        statusTrip: body.statusTrip || "confirmed",
+        statusPayment: boolValue(body.statusPayment, false),
+        paymentMethod: body.paymentMethod || "card",
 
         isDeleted: false,
         deletedAt: "-",
 
-        from: "Charles de Gaulle Airport",
-        to: "Disneyland Hotel",
+        from: body.pickupLocation || "Charles de Gaulle Airport",
+        to: body.dropoffLocation || "Disneyland Hotel",
 
-        notes: "-",
+        notes: body.notes || "-",
     };
 };
 
@@ -831,32 +892,56 @@ const debugSendBookingNotifications = async (req, res) => {
             );
         }
 
+        const type = req.body?.type || "created";
+
         const data = buildDummyBookingNotificationData(req.body || {});
 
         const dummyBooking = {
             _id: data.bookingId,
+            fullName: data.fullName,
             email: data.email,
             phoneNumber: data.phoneNumber,
         };
 
-        const adminPdf = await generatePdfBuffer(generateAdminBookingPdf(data));
-        const customerPdf = await generatePdfBuffer(generateCustomerBookingPdf(data));
+        const adminPdfHtml = generateAdminBookingPdf(data);
+        const customerPdfHtml = generateCustomerBookingPdf(data);
+
+        const adminPdf = await generatePdfBuffer(adminPdfHtml);
+        const customerPdf = await generatePdfBuffer(customerPdfHtml);
 
         await sendBookingNotifications({
             booking: dummyBooking,
             data,
-            type: req.body?.type || "created",
+            type,
             adminPdf,
             customerPdf,
         });
 
         return formatResponse(res, 200, "Dummy booking notification sent successfully", {
+            bookingId: data.bookingId,
             toEmail: data.email,
             toWhatsApp: data.phoneNumber,
-            type: req.body?.type || "created",
+            type,
+            scenario: {
+                roundtrip: data.roundtrip,
+                business:
+                    data.vehicleBookingType === "business" ||
+                    data.vehicleType?.toLowerCase().includes("business"),
+            },
+            pickupDateOut: data.pickupDateOut,
+            pickupDateReturn: data.pickupDateReturn,
+            totalPrice: data.totalPrice,
         });
     } catch (error) {
-        return formatResponse(res, 500, "Failed send dummy booking notification", null, error.message);
+        console.error("Failed send dummy booking notification:", error);
+
+        return formatResponse(
+            res,
+            500,
+            "Failed send dummy booking notification",
+            null,
+            error.message
+        );
     }
 };
 

@@ -1,5 +1,28 @@
 // ===== Helper Functions =====
 
+const { isBusinessBooking } = require("../../utils/booking-template");
+
+const ICON = {
+  date: "🗓️",
+  time: "⏰",
+  pickup: "📍",
+  dropoff: "📍",
+  flight: "✈️",
+  passengers: "👥",
+  luggage: "🧳",
+  childSeats: "🚼",
+  vehicle: "🚐",
+  price: "💶",
+  payment: "💳",
+  business: "✨",
+  star: "🌟",
+  tv: "📺",
+  seat: "💺",
+  aircon: "❄️",
+  return: "🔁",
+  hotel: "🏨",
+};
+
 const value = (v, fallback = "-") => {
   if (v === undefined || v === null || v === "") return fallback;
   return v;
@@ -108,14 +131,13 @@ const formatBaggage = (data) => {
 };
 
 const BUSINESS_FEATURES = [
-  "Starlight ceiling",
-  "TV with Disney movies",
-  "Luxury leather seats",
-  "Air conditioning",
+  `${ICON.star} Starlight ceiling`,
+  `${ICON.tv} TV with Disney movies`,
+  `${ICON.seat} Luxury leather seats`,
+  `${ICON.aircon} Air conditioning`,
 ];
 
-const businessFeaturesBlock = () =>
-  BUSINESS_FEATURES.map((f) => `• ${f}`).join("\n");
+const businessFeaturesBlock = () => BUSINESS_FEATURES.join("\n");
 
 // ===== Template Builder =====
 // Menghasilkan salah satu dari 4 varian:
@@ -127,11 +149,13 @@ const generateCustomerBookingWhatsApp = (data, options = {}) => {
   const { type = "created" } = options;
 
   const isRoundTrip = boolValue(data.roundtrip || data.roundTrip);
-  const isBusiness = boolValue(data.businessClass);
+  const isBusiness = isBusinessBooking
+    ? isBusinessBooking(data)
+    : boolValue(data.businessClass);
 
   const intro =
     type === "updated"
-      ? "Your booking details have been updated! Please find your updated transfer details below."
+      ? "Your booking details have been updated."
       : "Thank you for your booking with Disney Paris Airport Transfer.";
 
   const pickupSide = {
@@ -148,120 +172,151 @@ const generateCustomerBookingWhatsApp = (data, options = {}) => {
     address: data.dropoffAddress,
   };
 
+  const pickupPlace = composePlace(pickupSide);
+  const dropoffPlace = composePlace(dropoffSide);
+
   const vehicleLabel = isBusiness
     ? "Mercedes-Benz Business Class Vehicle"
     : "Economy Class";
 
   const vehicleBlock = isBusiness
-    ? `*Vehicle:* ${vehicleLabel}\n\n${businessFeaturesBlock()}`
-    : `*Vehicle:* ${vehicleLabel}`;
+    ? `${ICON.vehicle} *Vehicle:* ${vehicleLabel}
 
-  const flightOrTrain = pick(
-    data.flightNumber,
-    data.trainNumber,
-    data.pickupFlightNumber,
-    data.dropoffFlightNumber,
-    "-"
-  );
+${businessFeaturesBlock()}`
+    : `${ICON.vehicle} *Vehicle:* ${vehicleLabel}`;
 
-  const passengerBlock = `*Passengers:* ${value(
-    data.passengers
-  )}\n*Luggage:* ${formatBaggage(data)}\n*Child Seats:* ${formatSeatsOnly(
-    data
-  )}`;
+  const passengerBlock = `${ICON.passengers} *Passengers:* ${value(data.passengers)}
+${ICON.luggage} *Luggage:* ${formatBaggage(data)}
+${ICON.childSeats} *Child Seats:* ${formatSeatsOnly(data)}`;
 
   const driverNote =
     "For your arrival, your driver will be waiting inside the arrivals hall with a name board displaying your name.";
 
   const confirmAsk = "Could you kindly confirm that all details above are correct?";
 
-  const closing = `Kind regards,\n\nPriya\nDisney Paris Airport Transfer`;
+  const closing = `Kind regards,
 
-  // ----- ONE WAY -----
+Priya
+Disney Paris Airport Transfer`;
+
+  // ONE WAY
   if (!isRoundTrip) {
     const confirmText = isBusiness
       ? "We are delighted to confirm your transfer:"
       : "We are pleased to confirm your transfer:";
 
+    const flightOrTrain = pick(
+      data.flightNumber,
+      data.trainNumber,
+      data.pickupFlightNumber,
+      data.dropoffFlightNumber,
+      "-"
+    );
+
     const upgradeBlock = !isBusiness
-      ? `\n\n*Business Class Upgrade Available*\n\nFor only 10€ extra per transfer, we can upgrade your journey to a Mercedes-Benz Business Class Vehicle.\n\n${businessFeaturesBlock()}`
+      ? `
+
+${ICON.business} *Business Class Upgrade Available*
+
+For only 10€ extra per transfer, we can upgrade your journey to a Mercedes-Benz Business Class Vehicle.
+
+${businessFeaturesBlock()}`
       : "";
 
-    const returnBlock = `\n\n*Return Transfer*\n\nIf you have not yet arranged your return transfer, we would be delighted to organise it for you.\n\nPlease simply let us know:\n\n• Return date\n• Flight departure time\n• Pickup hotel`;
+    const returnTransferBlock = `
 
-    return `Hello ${value(data.fullName)}
+${ICON.return} *Return Transfer*
+
+If you have not yet arranged your return transfer, we would be delighted to organise it for you.
+
+Please simply let us know:
+
+${ICON.date} Return date
+${ICON.time} Flight departure time
+${ICON.hotel} Pickup hotel`;
+
+    return `Hello ${value(data.fullName)} 😊
 
 ${intro}
 
 ${confirmText}
 
-*Date:* ${formatDate(data.pickupDateOut)}
-*Time:* ${formatTime(data.pickupDateOut)}
+${ICON.date} *Date:* ${formatDate(data.pickupDateOut)}
+${ICON.time} *Time:* ${formatTime(data.pickupDateOut)}
 
-*Pickup:* ${composePlace(pickupSide)}
-*Drop-off:* ${composePlace(dropoffSide)}
+${ICON.pickup} *Pickup:* ${pickupPlace}
+${ICON.dropoff} *Drop-off:* ${dropoffPlace}
 
-*Flight/Train:* ${flightOrTrain}
+${ICON.flight} *Flight/Train:* ${flightOrTrain}
 
 ${passengerBlock}
 
 ${vehicleBlock}
 
-*Price:* ${formatPrice(data.totalPrice)}
-*Payment:* ${titleCase(data.paymentMethod)}
+${ICON.price} *Price:* ${formatPrice(data.totalPrice)}
+${ICON.payment} *Payment:* ${titleCase(data.paymentMethod)}
 
 ${driverNote}
 
-${confirmAsk}${upgradeBlock}${returnBlock}
+${confirmAsk}${upgradeBlock}${returnTransferBlock}
 
 ${closing}`;
   }
 
-  // ----- ROUND TRIP (2 WAYS) -----
+  // ROUND TRIP
   const confirmText = isBusiness
     ? "We are delighted to confirm your round-trip transfer:"
     : "We are pleased to confirm your round-trip transfer:";
 
-  const arrivalRoute = `${composePlace(pickupSide)} → ${composePlace(dropoffSide)}`;
-  const returnRoute = `${composePlace(dropoffSide)} → ${composePlace(pickupSide)}`;
+  const arrivalRoute = `${pickupPlace} → ${dropoffPlace}`;
+  const returnRoute = `${dropoffPlace} → ${pickupPlace}`;
+
   const arrivalFlight = pick(data.flightNumber, data.pickupFlightNumber, "-");
 
   const upgradeBlock = !isBusiness
-    ? `\n\n*Business Class Upgrade Available*\n\nFor only 10€ extra per transfer (20€ round trip), we can upgrade both journeys to a Mercedes-Benz Business Class Vehicle.\n\n${businessFeaturesBlock()}`
+    ? `
+
+${ICON.business} *Business Class Upgrade Available*
+
+For only 10€ extra per transfer (20€ round trip), we can upgrade both journeys to a Mercedes-Benz Business Class Vehicle.
+
+${businessFeaturesBlock()}`
     : "";
 
   const businessClosing = isBusiness
-    ? "\n\nWe look forward to welcoming you to Disneyland Paris and providing a premium travel experience."
+    ? `
+
+We look forward to welcoming you to Disneyland Paris and providing a premium travel experience.`
     : "";
 
-  return `Hello ${value(data.fullName)}
+  return `Hello ${value(data.fullName)} 😊
 
 ${intro}
 
 ${confirmText}
 
-*Arrival Transfer*
+${ICON.flight} *Arrival Transfer*
 
-*Date:* ${formatDate(data.pickupDateOut)}
-*Time:* ${formatTime(data.pickupDateOut)}
+${ICON.date} *Date:* ${formatDate(data.pickupDateOut)}
+${ICON.time} *Time:* ${formatTime(data.pickupDateOut)}
 
-${arrivalRoute}
+${ICON.pickup} ${arrivalRoute}
 
-*Flight:* ${arrivalFlight}
+${ICON.flight} *Flight:* ${arrivalFlight}
 
-*Return Transfer*
+${ICON.return} *Return Transfer*
 
-*Date:* ${formatDate(data.pickupDateReturn)}
-*Pickup Time:* ${formatTime(data.pickupDateReturn)}
+${ICON.date} *Date:* ${formatDate(data.pickupDateReturn)}
+${ICON.time} *Pickup Time:* ${formatTime(data.pickupDateReturn)}
 
-${returnRoute}
+${ICON.pickup} ${returnRoute}
 
 ${passengerBlock}
 
 ${vehicleBlock}
 
-*Total Price:* ${formatPrice(data.totalPrice)}
-*Payment:* ${titleCase(data.paymentMethod)}
+${ICON.price} *Total Price:* ${formatPrice(data.totalPrice)}
+${ICON.payment} *Payment:* ${titleCase(data.paymentMethod)}
 
 ${driverNote}
 
