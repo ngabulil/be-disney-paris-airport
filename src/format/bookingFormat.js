@@ -78,16 +78,30 @@ const formatDateParis = (dateValue) => {
 const formatTimeParis = (dateValue) => {
   if (!dateValue) return "-";
 
-  const d = new Date(dateValue);
+  // Kalau Date object dari MongoDB / JS Date
+  if (dateValue instanceof Date) {
+    if (Number.isNaN(dateValue.getTime())) return "-";
 
-  if (Number.isNaN(d.getTime())) return "-";
+    // Ambil jam UTC apa adanya dari ISO, tidak convert ke Paris
+    return dateValue.toISOString().slice(11, 16);
+  }
 
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Europe/Paris",
-  }).format(d);
+  const text = String(dateValue).trim();
+
+  // Kalau ISO string: 2026-06-30T18:00:00.000Z
+  // Hasil: 18:00
+  const isoMatch = text.match(/T(\d{2}):(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}:${isoMatch[2]}`;
+  }
+
+  // Kalau format biasa: 18:00 atau 18.00
+  const timeMatch = text.match(/^(\d{1,2})[:.](\d{2})/);
+  if (timeMatch) {
+    return `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}`;
+  }
+
+  return "-";
 };
 
 const formatWaDateTime = (dateValue) => {
@@ -279,14 +293,14 @@ const formatBookingEmailData = (booking) => {
 
     createdAt: b.createdAt
       ? new Date(b.createdAt).toLocaleString("en-GB", {
-          timeZone: "Europe/Paris",
-        })
+        timeZone: "Europe/Paris",
+      })
       : "-",
 
     updatedAt: b.updatedAt
       ? new Date(b.updatedAt).toLocaleString("en-GB", {
-          timeZone: "Europe/Paris",
-        })
+        timeZone: "Europe/Paris",
+      })
       : "-",
 
     fullName: b.fullName || "-",
@@ -407,9 +421,8 @@ ${transferTitle}
 ✨ Business Class: ${yesNo(isBusinessClass(data))}
 🔁 Round trip: ${yesNo(isRoundTrip)}
 
-Your driver will be waiting for you in the arrival area after landing${
-    isRoundTrip ? " and at the hotel reception for your return" : ""
-  }.
+Your driver will be waiting for you in the arrival area after landing${isRoundTrip ? " and at the hotel reception for your return" : ""
+    }.
 
 Please confirm that all details are correct ✅
 
