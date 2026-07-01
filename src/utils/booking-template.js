@@ -99,15 +99,30 @@ const formatDate = (dateValue) => {
 const formatTime = (dateValue) => {
   if (!dateValue) return "-";
 
-  const d = new Date(dateValue);
-  if (Number.isNaN(d.getTime())) return "-";
+  // Kalau Date object dari MongoDB / JS Date
+  if (dateValue instanceof Date) {
+    if (Number.isNaN(dateValue.getTime())) return "-";
 
-  return new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Europe/Paris",
-  }).format(d);
+    // Ambil jam UTC apa adanya dari ISO, tidak convert ke Paris
+    return dateValue.toISOString().slice(11, 16);
+  }
+
+  const text = String(dateValue).trim();
+
+  // Kalau ISO string: 2026-06-30T18:00:00.000Z
+  // Hasil: 18:00
+  const isoMatch = text.match(/T(\d{2}):(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}:${isoMatch[2]}`;
+  }
+
+  // Kalau format biasa: 18:00 atau 18.00
+  const timeMatch = text.match(/^(\d{1,2})[:.](\d{2})/);
+  if (timeMatch) {
+    return `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}`;
+  }
+
+  return "-";
 };
 
 const formatPrice = (price) => {
